@@ -1,0 +1,8 @@
+{
+  "name": "GeoVentas - Control de Visitas y Geolocalización",
+  "description": "Plataforma empresarial para la gestión y seguimiento de visitas comerciales con geolocalización GPS en tiempo real, control de rutas y verificación de presencia.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
