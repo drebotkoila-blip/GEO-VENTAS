@@ -16,13 +16,25 @@ import { NewVisitModal } from './components/NewVisitModal';
 import { NewEmployeeModal } from './components/NewEmployeeModal';
 import { VisitsHistoryModal } from './components/VisitsHistoryModal';
 import { ClientDetailDrawer } from './components/ClientDetailDrawer';
+import { SupabaseSyncModal } from './components/SupabaseSyncModal';
 import { calculateDistanceMeters, calculateBearing } from './utils/geoUtils';
 import { sound } from './utils/audioFeedback';
+import {
+  supabase,
+  checkSupabaseConnection,
+  mapRowToRep,
+  mapRepToRow,
+  mapRowToClient,
+  mapClientToRow,
+  mapRowToVisit,
+  mapVisitToRow,
+  SupabaseSyncState,
+} from './lib/supabase';
 
 type ActiveTab = 'map' | 'rep_view' | 'supervisor' | 'employees';
 
 export default function App() {
-  // Persistence with localStorage
+  // Persistence with localStorage fallback
   const [salesReps, setSalesReps] = useState<SalesRep[]>(() => {
     const saved = localStorage.getItem('geoventas_reps');
     return saved ? JSON.parse(saved) : INITIAL_SALES_REPS;
@@ -37,6 +49,16 @@ export default function App() {
     const saved = localStorage.getItem('geoventas_visits');
     return saved ? JSON.parse(saved) : INITIAL_VISITS;
   });
+
+  // Supabase Connection & Sync State
+  const [supabaseState, setSupabaseState] = useState<SupabaseSyncState>({
+    isConnected: false,
+    isChecking: true,
+    lastSyncTime: null,
+    hasTables: false,
+    error: null,
+  });
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Navigation & Selection states
   const [activeTab, setActiveTab] = useState<ActiveTab>('map');
@@ -64,7 +86,7 @@ export default function App() {
   const simulationIntervalRef = useRef<number | null>(null);
   const simStepRef = useRef<number>(0);
 
-  // Save to localStorage
+  // Save to localStorage as local cache
   useEffect(() => {
     localStorage.setItem('geoventas_reps', JSON.stringify(salesReps));
   }, [salesReps]);
@@ -76,6 +98,135 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('geoventas_visits', JSON.stringify(visits));
   }, [visits]);
+
+  // SUPABASE INITIALIZATION & SYNC
+  const fetchSupabaseData = async () => {
+    try {
+      const conn = await checkSupabaseConnection();
+      if (!conn.isConnected) {
+        setSupabaseState((prev) => ({
+          ...prev,
+          isConnected: false,
+          isChecking: false,
+          error: conn.error,
+        }));
+        return;
+      }
+
+      setSupabaseState((prev) => ({
+        ...prev,
+        isConnected: true,
+        isChecking: false,
+        error: null,
+      }));
+
+      // Try fetching vendedores
+      const { data: repsData, error: repsError } = await supabase.from('vendedores').select('*');
+      const { data: clientsData } = await supabase.from('clientes').select('*');
+      const { data: visitsData } = await supabase.from('visitas').select('*');
+
+      let hasTables = false;
+      if (!repsError) {
+        hasTables = true;
+        if (repsData && repsData.length > 0) {
+          const mappedReps = repsData.map(mapRowToRep);
+          setSalesReps(mappedReps);
+        }
+      }
+
+      if (clientsData && clientsData.length > 0) {
+        const mappedClients = clientsData.map(mapRowToClient);
+        setClients(mappedClients);
+      }
+
+      if (visitsData && visitsData.length > 0) {
+        const mappedVisits = visitsData.map(mapRowToVisit);
+        setVisits(mappedVisits);
+      }
+
+      // If tables exist in Supabase but have 0 records, automatically populate them with initial data
+      if (hasTables && (!repsData || repsData.length === 0)) {
+        await handleSeedSupabase();
+      }
+
+      setSupabaseState((prev) => ({
+        ...prev,
+        hasTables,
+        lastSyncTime: new Date().toLocaleTimeString(),
+      }));
+    } catch (err: any) {
+      console.warn('Supabase fetch error:', err);
+      setSupabaseState((prev) => ({
+        ...prev,
+        isConnected: false,
+        isChecking: false,
+        error: err.message,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    fetchSupabaseData();
+
+    // Setup Supabase Realtime channel for live multi-device syncing
+    const channel = supabase
+      .channel('geoventas-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vendedores' },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updatedRep = mapRowToRep(payload.new);
+            setSalesReps((prev) =>
+              prev.map((r) => (r.id === updatedRep.id ? updatedRep : r))
+            );
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            const newRep = mapRowToRep(payload.new);
+            setSalesReps((prev) => {
+              if (prev.some((r) => r.id === newRep.id)) return prev;
+              return [...prev, newRep];
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'visitas' },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updatedVisit = mapRowToVisit(payload.new);
+            setVisits((prev) =>
+              prev.map((v) => (v.id === updatedVisit.id ? updatedVisit : v))
+            );
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            const newVisit = mapRowToVisit(payload.new);
+            setVisits((prev) => {
+              if (prev.some((v) => v.id === newVisit.id)) return prev;
+              return [newVisit, ...prev];
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Upload local initial data to Supabase
+  const handleSeedSupabase = async () => {
+    for (const rep of salesReps) {
+      await supabase.from('vendedores').upsert(mapRepToRow(rep));
+    }
+    for (const client of clients) {
+      await supabase.from('clientes').upsert(mapClientToRow(client));
+    }
+    for (const visit of visits) {
+      await supabase.from('visitas').upsert(mapVisitToRow(visit));
+    }
+    await fetchSupabaseData();
+  };
 
   const activeRep = salesReps.find((r) => r.id === selectedRepId) || salesReps[0];
   const selectedClient = clients.find((c) => c.id === selectedClientId) || null;
@@ -168,7 +319,7 @@ export default function App() {
 
         const updatedHistory = [...r.routeHistory, newPoint].slice(-40);
 
-        return {
+        const updatedRep: SalesRep = {
           ...r,
           currentCoords: newCoords,
           speedKmH,
@@ -178,6 +329,13 @@ export default function App() {
           routeHistory: updatedHistory,
           status: speedKmH > 5 ? 'on_route' : r.status,
         };
+
+        // Asynchronously sync location update to Supabase
+        if (supabaseState.isConnected) {
+          supabase.from('vendedores').upsert(mapRepToRow(updatedRep)).then(() => {});
+        }
+
+        return updatedRep;
       })
     );
   };
@@ -244,10 +402,12 @@ export default function App() {
     reason?: string
   ) => {
     const nowIso = new Date().toISOString();
+    let updatedVisit: Visit | null = null;
+
     setVisits((prev) =>
       prev.map((v) => {
         if (v.id !== visitId) return v;
-        return {
+        updatedVisit = {
           ...v,
           status: 'in_progress',
           checkInTime: nowIso,
@@ -256,12 +416,18 @@ export default function App() {
           isWithinGeofence,
           geofenceOverrideReason: reason,
         };
+        return updatedVisit;
       })
     );
 
     setSalesReps((prev) =>
       prev.map((r) => (r.id === selectedRepId ? { ...r, status: 'in_meeting' } : r))
     );
+
+    // Sync visit check-in to Supabase
+    if (updatedVisit && supabaseState.isConnected) {
+      supabase.from('visitas').upsert(mapVisitToRow(updatedVisit)).then(() => {});
+    }
 
     setActiveModalVisit(null);
   };
@@ -279,6 +445,8 @@ export default function App() {
     }
   ) => {
     const nowIso = new Date().toISOString();
+    let updatedVisit: Visit | null = null;
+
     setVisits((prev) =>
       prev.map((v) => {
         if (v.id !== visitId) return v;
@@ -289,7 +457,7 @@ export default function App() {
           duration = Math.max(5, Math.round(diffMs / (1000 * 60)));
         }
 
-        return {
+        updatedVisit = {
           ...v,
           status: 'completed',
           checkOutTime: nowIso,
@@ -302,12 +470,18 @@ export default function App() {
           signatureBase64: data.signatureBase64,
           photoUrl: data.photoUrl,
         };
+        return updatedVisit;
       })
     );
 
     setSalesReps((prev) =>
       prev.map((r) => (r.id === selectedRepId ? { ...r, status: 'available' } : r))
     );
+
+    // Sync visit check-out to Supabase
+    if (updatedVisit && supabaseState.isConnected) {
+      supabase.from('visitas').upsert(mapVisitToRow(updatedVisit)).then(() => {});
+    }
 
     setActiveModalVisit(null);
   };
@@ -320,6 +494,11 @@ export default function App() {
       id: newId,
     };
     setVisits((prev) => [newVisit, ...prev]);
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('visitas').upsert(mapVisitToRow(newVisit)).then(() => {});
+    }
   };
 
   // CREATE NEW CLIENT AND VISIT
@@ -341,9 +520,16 @@ export default function App() {
     setClients((prev) => [newClient, ...prev]);
     setVisits((prev) => [newVisit, ...prev]);
     setSelectedClientId(newClientId);
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('clientes').upsert(mapClientToRow(newClient)).then(() => {
+        supabase.from('visitas').upsert(mapVisitToRow(newVisit)).then(() => {});
+      });
+    }
   };
 
-  // ADD NEW EMPLOYEE
+  // ADD NEW SALES REP (VENDEDOR)
   const handleAddEmployee = (
     employeeData: Omit<SalesRep, 'id' | 'totalDistanceKmToday' | 'routeHistory' | 'lastPing' | 'speedKmH'>
   ) => {
@@ -367,9 +553,14 @@ export default function App() {
 
     setSalesReps((prev) => [...prev, newRep]);
     setSelectedRepId(newId);
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('vendedores').upsert(mapRepToRow(newRep)).then(() => {});
+    }
   };
 
-  // DELETE EMPLOYEE
+  // DELETE SALES REP
   const handleDeleteEmployee = (repId: string) => {
     setSalesReps((prev) => {
       const updated = prev.filter((r) => r.id !== repId);
@@ -378,6 +569,10 @@ export default function App() {
       }
       return updated;
     });
+
+    if (supabaseState.isConnected) {
+      supabase.from('vendedores').delete().eq('id', repId).then(() => {});
+    }
   };
 
   // RESET TO DEMO DATA
@@ -497,7 +692,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* SUB-HEADER / CONTEXT TOOLBAR */}
+      {/* SUB-HEADER / CONTEXT TOOLBAR & SUPABASE STATUS */}
       <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
         {/* Mobile Tab Switcher */}
         <div className="flex md:hidden items-center gap-1 bg-slate-100 p-1 rounded-xl">
@@ -573,8 +768,25 @@ export default function App() {
           </label>
         </div>
 
-        {/* Action shortcut to register sales rep & reset */}
+        {/* Supabase status indicator & actions */}
         <div className="flex items-center gap-3 ml-auto">
+          {/* Supabase connection badge */}
+          <button
+            onClick={() => {
+              sound.playClick();
+              setIsSupabaseModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700 font-medium"
+            title="Ver estado de conexión con Supabase"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                supabaseState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`}
+            />
+            <span>{supabaseState.isConnected ? 'Supabase Conectado' : 'Supabase (Configurar)'}</span>
+          </button>
+
           <button
             onClick={() => {
               sound.playClick();
@@ -709,7 +921,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW 4: EMPLEADOS / VENDEDORES */}
+        {/* VIEW 4: VENDEDORES */}
         {activeTab === 'employees' && (
           <EmployeesView
             salesReps={salesReps}
@@ -784,7 +996,7 @@ export default function App() {
         />
       )}
 
-      {/* 4. New Employee Modal */}
+      {/* 4. New Sales Rep (Vendedor) Modal */}
       {isNewEmployeeModalOpen && (
         <NewEmployeeModal
           onClose={() => setIsNewEmployeeModalOpen(false)}
@@ -803,10 +1015,38 @@ export default function App() {
         />
       )}
 
+      {/* 6. Supabase Sync Modal */}
+      {isSupabaseModalOpen && (
+        <SupabaseSyncModal
+          syncState={supabaseState}
+          onClose={() => setIsSupabaseModalOpen(false)}
+          onSyncNow={fetchSupabaseData}
+          onSeedSupabase={handleSeedSupabase}
+          vendedoresCount={salesReps.length}
+          clientesCount={clients.length}
+          visitasCount={visits.length}
+        />
+      )}
+
       {/* FOOTER */}
       <footer className="border-t border-slate-200 bg-white py-4 px-6 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 mt-auto">
-        <p>© 2026 GeoVentas · Sistema de Gestión de Rutas y Geolocalización Comercial</p>
+        <p>© 2026 GeoVentas · Conectado con Supabase PostgreSQL</p>
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => {
+              sound.playClick();
+              setIsSupabaseModalOpen(true);
+            }}
+            className="hover:text-slate-800 transition-colors font-semibold flex items-center gap-1.5"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                supabaseState.isConnected ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}
+            />
+            <span>Estado Supabase</span>
+          </button>
+          <span>·</span>
           <button
             onClick={() => {
               sound.playClick();
@@ -816,8 +1056,6 @@ export default function App() {
           >
             Descargar Reporte CSV
           </button>
-          <span>·</span>
-          <span>Geocercas de 80m a 200m activas</span>
         </div>
       </footer>
     </div>
