@@ -21,7 +21,7 @@ import { NewEmployeeModal } from './components/NewEmployeeModal';
 import { VisitsHistoryModal } from './components/VisitsHistoryModal';
 import { ClientDetailDrawer } from './components/ClientDetailDrawer';
 import { SupabaseSyncModal } from './components/SupabaseSyncModal';
-import { calculateDistanceMeters, calculateBearing } from './utils/geoUtils';
+import { calculateDistanceMeters, calculateBearing, safeCoords, isValidCoordinate } from './utils/geoUtils';
 import { sound } from './utils/audioFeedback';
 import {
   supabase,
@@ -38,20 +38,64 @@ import {
 type ActiveTab = 'map' | 'rep_view' | 'supervisor' | 'employees' | 'clients';
 
 export default function App() {
-  // Persistence with localStorage fallback
+  // Persistence with localStorage fallback and automatic corrupt-data healing
   const [salesReps, setSalesReps] = useState<SalesRep[]>(() => {
     const saved = localStorage.getItem('geoventas_reps');
-    return saved ? JSON.parse(saved) : INITIAL_SALES_REPS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((r: any) => ({
+            ...r,
+            currentCoords: safeCoords(r.currentCoords, { lat: 40.4530, lng: -3.6883 }),
+            routeHistory: Array.isArray(r.routeHistory)
+              ? r.routeHistory.filter((p: any) => p && isValidCoordinate(p))
+              : [],
+          }));
+        }
+      } catch (err) {
+        console.warn('Error reading geoventas_reps from storage:', err);
+      }
+    }
+    return INITIAL_SALES_REPS;
   });
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('geoventas_clients');
-    return saved ? JSON.parse(saved) : INITIAL_CLIENTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((c: any) => ({
+            ...c,
+            coords: safeCoords(c.coords, { lat: 40.4200, lng: -3.7000 }),
+            geofenceRadiusMeters: Number.isFinite(Number(c.geofenceRadiusMeters)) ? Number(c.geofenceRadiusMeters) : 120,
+          }));
+        }
+      } catch (err) {
+        console.warn('Error reading geoventas_clients from storage:', err);
+      }
+    }
+    return INITIAL_CLIENTS;
   });
 
   const [visits, setVisits] = useState<Visit[]>(() => {
     const saved = localStorage.getItem('geoventas_visits');
-    return saved ? JSON.parse(saved) : INITIAL_VISITS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((v: any) => ({
+            ...v,
+            checkInCoords: v.checkInCoords ? safeCoords(v.checkInCoords) : undefined,
+            checkOutCoords: v.checkOutCoords ? safeCoords(v.checkOutCoords) : undefined,
+          }));
+        }
+      } catch (err) {
+        console.warn('Error reading geoventas_visits from storage:', err);
+      }
+    }
+    return INITIAL_VISITS;
   });
 
   // Supabase Connection & Sync State
@@ -336,32 +380,38 @@ export default function App() {
 
   // UPDATE SALES REP COORDINATES & TELEMETRY
   const updateRepCoordinates = (repId: string, newCoords: Coordinates, speedKmH: number = 24) => {
+    const validCoords = safeCoords(newCoords, { lat: 40.4530, lng: -3.6883 });
+    const safeSpeed = Number.isFinite(speedKmH) ? speedKmH : 0;
+
     setSalesReps((prev) =>
       prev.map((r) => {
         if (r.id !== repId) return r;
 
-        const distanceMeters = calculateDistanceMeters(r.currentCoords, newCoords);
+        const currentValid = safeCoords(r.currentCoords, { lat: 40.4530, lng: -3.6883 });
+        const distanceMeters = calculateDistanceMeters(currentValid, validCoords);
         const distanceKm = distanceMeters / 1000;
-        const heading = calculateBearing(r.currentCoords, newCoords);
+        const heading = calculateBearing(currentValid, validCoords);
 
         const newPoint = {
-          lat: newCoords.lat,
-          lng: newCoords.lng,
+          lat: validCoords.lat,
+          lng: validCoords.lng,
           timestamp: new Date().toLocaleTimeString(),
-          speedKmH,
+          speedKmH: safeSpeed,
         };
 
-        const updatedHistory = [...r.routeHistory, newPoint].slice(-40);
+        const updatedHistory = [...(Array.isArray(r.routeHistory) ? r.routeHistory : []), newPoint]
+          .filter((p) => isValidCoordinate(p))
+          .slice(-40);
 
         const updatedRep: SalesRep = {
           ...r,
-          currentCoords: newCoords,
-          speedKmH,
-          heading,
+          currentCoords: validCoords,
+          speedKmH: safeSpeed,
+          heading: Number.isFinite(heading) ? heading : 0,
           lastPing: new Date().toISOString(),
-          totalDistanceKmToday: Number((r.totalDistanceKmToday + distanceKm).toFixed(2)),
+          totalDistanceKmToday: Number(((r.totalDistanceKmToday || 0) + (Number.isFinite(distanceKm) ? distanceKm : 0)).toFixed(2)),
           routeHistory: updatedHistory,
-          status: speedKmH > 5 ? 'on_route' : r.status,
+          status: safeSpeed > 5 ? 'on_route' : r.status,
         };
 
         // Asynchronously sync location update to Supabase
@@ -757,16 +807,22 @@ export default function App() {
           Zone 3: 1 Primary action */}
       <header className="flex items-center justify-between gap-6 px-6 py-3.5 bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
         {/* Zone 1: Brand Wordmark */}
-        <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-              <circle cx="12" cy="10" r="3"/>
-            </svg>
+        <div className="flex items-center gap-3 whitespace-nowrap shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-center overflow-hidden p-0.5 hover:shadow-sm transition-shadow">
+            <img 
+              src="/assets/aistudio/geo-logo-design-inspiration-for-a-unique-identity-modern-elegance-and-creative-design-watermark-your-success-with-the-striking-this-logo-vector_47d08a1d.jpg" 
+              alt="GEO Logo" 
+              className="w-full h-full object-contain rounded-lg"
+            />
           </div>
-          <span className="text-lg font-bold tracking-tight text-slate-900">
-            GeoVentas
-          </span>
+          <div className="flex flex-col">
+            <span className="text-lg font-bold tracking-tight text-slate-900 leading-tight">
+              GeoVentas
+            </span>
+            <span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">
+              GPS Tracking & CRM
+            </span>
+          </div>
         </div>
 
         {/* Zone 2: Navigation Links */}
@@ -1320,7 +1376,14 @@ export default function App() {
 
       {/* FOOTER */}
       <footer className="border-t border-slate-200 bg-white py-4 px-6 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 mt-auto">
-        <p>© 2026 GeoVentas · Conectado con Supabase PostgreSQL</p>
+        <div className="flex items-center gap-2.5">
+          <img 
+            src="/assets/aistudio/geo-logo-design-inspiration-for-a-unique-identity-modern-elegance-and-creative-design-watermark-your-success-with-the-striking-this-logo-vector_47d08a1d.jpg" 
+            alt="GEO Logo" 
+            className="w-5 h-5 rounded-full object-cover border border-slate-200"
+          />
+          <p>© 2026 GeoVentas · Conectado con Supabase PostgreSQL</p>
+        </div>
         <div className="flex items-center gap-4">
           <button
             onClick={() => {

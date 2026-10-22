@@ -43,10 +43,10 @@ export const EditEmployeeModal: React.FC<EditEmployeeModalProps> = ({
       territory: territory.trim(),
       vehicleType,
       status,
-      batteryLevel: Math.min(100, Math.max(0, Number(batteryLevel))),
+      batteryLevel: Math.min(100, Math.max(0, Number(batteryLevel) || 90)),
       currentCoords: {
-        lat: Number(lat),
-        lng: Number(lng),
+        lat: Number.isFinite(Number(lat)) ? Number(lat) : (rep.currentCoords?.lat || 40.4530),
+        lng: Number.isFinite(Number(lng)) ? Number(lng) : (rep.currentCoords?.lng || -3.6883),
       },
     };
 

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { SalesRep, Client, Visit } from '../types';
+import { safeCoords } from '../utils/geoUtils';
 
 // Strip any trailing /rest/v1 or trailing slash to get the valid base Supabase URL
 const rawUrl = import.meta.env.VITE_SUPABASE_URL || 'https://jeuqkaidbikwbdquhkaa.supabase.co/rest/v1/';
@@ -57,21 +58,26 @@ export function mapRowToRep(row: any): SalesRep {
     vehicleType: row.vehicle_type,
     hireDate: row.hire_date,
     dni: row.dni,
-    currentCoords: {
-      lat: Number(row.current_lat),
-      lng: Number(row.current_lng),
-    },
+    currentCoords: safeCoords(
+      row.current_lat !== undefined && row.current_lng !== undefined
+        ? { lat: Number(row.current_lat), lng: Number(row.current_lng) }
+        : null,
+      { lat: 40.4530, lng: -3.6883 }
+    ),
     lastPing: row.last_ping || new Date().toISOString(),
     status: row.status || 'available',
-    batteryLevel: Number(row.battery_level ?? 90),
-    speedKmH: Number(row.speed_kmh ?? 0),
-    heading: row.heading ? Number(row.heading) : undefined,
-    totalDistanceKmToday: Number(row.total_distance_km_today ?? 0),
-    routeHistory: Array.isArray(row.route_history) ? row.route_history : [],
+    batteryLevel: Number.isFinite(Number(row.battery_level)) ? Number(row.battery_level) : 90,
+    speedKmH: Number.isFinite(Number(row.speed_kmh)) ? Number(row.speed_kmh) : 0,
+    heading: row.heading && Number.isFinite(Number(row.heading)) ? Number(row.heading) : undefined,
+    totalDistanceKmToday: Number.isFinite(Number(row.total_distance_km_today)) ? Number(row.total_distance_km_today) : 0,
+    routeHistory: Array.isArray(row.route_history)
+      ? row.route_history.filter((p: any) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+      : [],
   };
 }
 
 export function mapRepToRow(rep: SalesRep): any {
+  const coords = safeCoords(rep.currentCoords, { lat: 40.4530, lng: -3.6883 });
   return {
     id: rep.id,
     name: rep.name,
@@ -83,8 +89,8 @@ export function mapRepToRow(rep: SalesRep): any {
     vehicle_type: rep.vehicleType,
     hire_date: rep.hireDate,
     dni: rep.dni,
-    current_lat: rep.currentCoords.lat,
-    current_lng: rep.currentCoords.lng,
+    current_lat: coords.lat,
+    current_lng: coords.lng,
     last_ping: rep.lastPing,
     status: rep.status,
     battery_level: rep.batteryLevel,
@@ -106,11 +112,13 @@ export function mapRowToClient(row: any): Client {
     email: row.email,
     address: row.address,
     city: row.city,
-    coords: {
-      lat: Number(row.lat),
-      lng: Number(row.lng),
-    },
-    geofenceRadiusMeters: Number(row.geofence_radius_meters ?? 120),
+    coords: safeCoords(
+      row.lat !== undefined && row.lng !== undefined
+        ? { lat: Number(row.lat), lng: Number(row.lng) }
+        : null,
+      { lat: 40.4200, lng: -3.7000 }
+    ),
+    geofenceRadiusMeters: Number.isFinite(Number(row.geofence_radius_meters)) ? Number(row.geofence_radius_meters) : 120,
     priority: row.priority || 'media',
     category: row.category || 'Retail',
     status: row.status || 'active',
@@ -119,6 +127,7 @@ export function mapRowToClient(row: any): Client {
 }
 
 export function mapClientToRow(c: Client): any {
+  const coords = safeCoords(c.coords, { lat: 40.4200, lng: -3.7000 });
   return {
     id: c.id,
     name: c.name,
@@ -129,8 +138,8 @@ export function mapClientToRow(c: Client): any {
     email: c.email,
     address: c.address,
     city: c.city,
-    lat: c.coords.lat,
-    lng: c.coords.lng,
+    lat: coords.lat,
+    lng: coords.lng,
     geofence_radius_meters: c.geofenceRadiusMeters,
     priority: c.priority,
     category: c.category,
@@ -140,6 +149,22 @@ export function mapClientToRow(c: Client): any {
 }
 
 export function mapRowToVisit(row: any): Visit {
+  const checkInCoords =
+    row.check_in_lat !== undefined &&
+    row.check_in_lng !== undefined &&
+    Number.isFinite(Number(row.check_in_lat)) &&
+    Number.isFinite(Number(row.check_in_lng))
+      ? { lat: Number(row.check_in_lat), lng: Number(row.check_in_lng) }
+      : undefined;
+
+  const checkOutCoords =
+    row.check_out_lat !== undefined &&
+    row.check_out_lng !== undefined &&
+    Number.isFinite(Number(row.check_out_lat)) &&
+    Number.isFinite(Number(row.check_out_lng))
+      ? { lat: Number(row.check_out_lat), lng: Number(row.check_out_lng) }
+      : undefined;
+
   return {
     id: row.id,
     repId: row.rep_id,
@@ -149,17 +174,17 @@ export function mapRowToVisit(row: any): Visit {
     status: row.status,
     objective: row.objective || '',
     checkInTime: row.check_in_time,
-    checkInCoords: row.check_in_lat ? { lat: Number(row.check_in_lat), lng: Number(row.check_in_lng) } : undefined,
-    checkInDistanceMeters: row.check_in_distance_meters ? Number(row.check_in_distance_meters) : undefined,
-    isWithinGeofence: row.is_within_geofence,
+    checkInCoords,
+    checkInDistanceMeters: row.check_in_distance_meters && Number.isFinite(Number(row.check_in_distance_meters)) ? Number(row.check_in_distance_meters) : undefined,
+    isWithinGeofence: Boolean(row.is_within_geofence),
     geofenceOverrideReason: row.geofence_override_reason,
     checkOutTime: row.check_out_time,
-    checkOutCoords: row.check_out_lat ? { lat: Number(row.check_out_lat), lng: Number(row.check_out_lng) } : undefined,
-    durationMinutes: row.duration_minutes ? Number(row.duration_minutes) : undefined,
+    checkOutCoords,
+    durationMinutes: row.duration_minutes && Number.isFinite(Number(row.duration_minutes)) ? Number(row.duration_minutes) : undefined,
     outcome: row.outcome,
-    saleAmount: row.sale_amount ? Number(row.sale_amount) : undefined,
+    saleAmount: row.sale_amount && Number.isFinite(Number(row.sale_amount)) ? Number(row.sale_amount) : undefined,
     notes: row.notes,
-    clientFeedbackRating: row.client_feedback_rating ? Number(row.client_feedback_rating) : undefined,
+    clientFeedbackRating: row.client_feedback_rating && Number.isFinite(Number(row.client_feedback_rating)) ? Number(row.client_feedback_rating) : undefined,
     signatureBase64: row.signature_base64,
     photoUrl: row.photo_url,
   };

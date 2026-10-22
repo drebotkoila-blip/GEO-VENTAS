@@ -122,9 +122,16 @@ export const VisitsHistoryModal: React.FC<VisitsHistoryModalProps> = ({
       <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] border border-slate-200 shadow-xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">Auditoría y Registro Histórico de Visitas</h3>
-            <p className="text-xs text-slate-500">Historial completo con selección de registros, edición y auditoría GPS</p>
+          <div className="flex items-center gap-3">
+            <img 
+              src="/assets/aistudio/geo-logo-design-inspiration-for-a-unique-identity-modern-elegance-and-creative-design-watermark-your-success-with-the-striking-this-logo-vector_47d08a1d.jpg" 
+              alt="GEO Logo" 
+              className="w-9 h-9 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-xs shrink-0"
+            />
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Auditoría y Registro Histórico de Visitas</h3>
+              <p className="text-xs text-slate-500">Historial completo con selección de registros, edición y auditoría GPS</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button

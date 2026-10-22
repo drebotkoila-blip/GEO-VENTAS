@@ -1,22 +1,56 @@
 import { Coordinates } from '../types';
 
 /**
+ * Validates if a coordinate object has finite, valid numerical lat and lng
+ */
+export function isValidCoordinate(coord?: Coordinates | null): boolean {
+  if (!coord) return false;
+  const lat = Number(coord.lat);
+  const lng = Number(coord.lng);
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    !Number.isNaN(lat) &&
+    !Number.isNaN(lng) &&
+    Math.abs(lat) <= 90 &&
+    Math.abs(lng) <= 180
+  );
+}
+
+/**
+ * Returns safe finite coordinates, falling back to Madrid center if invalid/NaN/null
+ */
+export function safeCoords(coord?: Coordinates | null, fallback = { lat: 40.4168, lng: -3.7038 }): Coordinates {
+  if (isValidCoordinate(coord)) {
+    return {
+      lat: Number(coord!.lat),
+      lng: Number(coord!.lng),
+    };
+  }
+  return fallback;
+}
+
+/**
  * Calculates the great circle distance between two points on the earth in meters
  * using the Haversine formula.
  */
 export function calculateDistanceMeters(coord1: Coordinates, coord2: Coordinates): number {
+  if (!isValidCoordinate(coord1) || !isValidCoordinate(coord2)) {
+    return 0;
+  }
   const R = 6371e3; // Earth radius in meters
-  const phi1 = (coord1.lat * Math.PI) / 180;
-  const phi2 = (coord2.lat * Math.PI) / 180;
-  const deltaPhi = ((coord2.lat - coord1.lat) * Math.PI) / 180;
-  const deltaLambda = ((coord2.lng - coord1.lng) * Math.PI) / 180;
+  const phi1 = (Number(coord1.lat) * Math.PI) / 180;
+  const phi2 = (Number(coord2.lat) * Math.PI) / 180;
+  const deltaPhi = ((Number(coord2.lat) - Number(coord1.lat)) * Math.PI) / 180;
+  const deltaLambda = ((Number(coord2.lng) - Number(coord1.lng)) * Math.PI) / 180;
 
   const a =
     Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
     Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  return Math.round(R * c);
+  const distance = Math.round(R * c);
+  return Number.isFinite(distance) ? distance : 0;
 }
 
 /**
@@ -46,9 +80,12 @@ export function formatDuration(minutes: number): string {
  * Calculate compass bearing between two points in degrees (0 - 360)
  */
 export function calculateBearing(start: Coordinates, end: Coordinates): number {
-  const lat1 = (start.lat * Math.PI) / 180;
-  const lat2 = (end.lat * Math.PI) / 180;
-  const deltaLng = ((end.lng - start.lng) * Math.PI) / 180;
+  if (!isValidCoordinate(start) || !isValidCoordinate(end)) {
+    return 0;
+  }
+  const lat1 = (Number(start.lat) * Math.PI) / 180;
+  const lat2 = (Number(end.lat) * Math.PI) / 180;
+  const deltaLng = ((Number(end.lng) - Number(start.lng)) * Math.PI) / 180;
 
   const y = Math.sin(deltaLng) * Math.cos(lat2);
   const x =
@@ -56,16 +93,20 @@ export function calculateBearing(start: Coordinates, end: Coordinates): number {
     Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
   const theta = Math.atan2(y, x);
 
-  return (Math.round((theta * 180) / Math.PI) + 360) % 360;
+  const bearing = (Math.round((theta * 180) / Math.PI) + 360) % 360;
+  return Number.isFinite(bearing) ? bearing : 0;
 }
 
 /**
  * Interpolate a point between two coordinates given a progress fraction [0, 1]
  */
 export function interpolateCoords(start: Coordinates, end: Coordinates, fraction: number): Coordinates {
+  if (!isValidCoordinate(start) || !isValidCoordinate(end)) {
+    return isValidCoordinate(start) ? start : (isValidCoordinate(end) ? end : { lat: 40.4168, lng: -3.7038 });
+  }
   return {
-    lat: start.lat + (end.lat - start.lat) * fraction,
-    lng: start.lng + (end.lng - start.lng) * fraction,
+    lat: Number(start.lat) + (Number(end.lat) - Number(start.lat)) * fraction,
+    lng: Number(start.lng) + (Number(end.lng) - Number(start.lng)) * fraction,
   };
 }
 

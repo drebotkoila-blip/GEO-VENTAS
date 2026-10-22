@@ -64,8 +64,11 @@ export const EditClientModal: React.FC<EditClientModalProps> = ({
       email: email.trim() || 'info@cliente.com',
       address: address.trim(),
       city: city.trim() || 'Madrid',
-      coords: { lat, lng },
-      geofenceRadiusMeters: geofenceRadius,
+      coords: {
+        lat: Number.isFinite(Number(lat)) ? Number(lat) : (client?.coords?.lat || 40.4200),
+        lng: Number.isFinite(Number(lng)) ? Number(lng) : (client?.coords?.lng || -3.7000),
+      },
+      geofenceRadiusMeters: Number.isFinite(Number(geofenceRadius)) ? Number(geofenceRadius) : 120,
       priority,
       category,
       status,

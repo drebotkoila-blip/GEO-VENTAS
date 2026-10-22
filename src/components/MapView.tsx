@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { SalesRep, Client, Visit, Coordinates } from '../types';
-import { calculateDistanceMeters, formatDistance } from '../utils/geoUtils';
+import { calculateDistanceMeters, formatDistance, safeCoords, isValidCoordinate } from '../utils/geoUtils';
 import { sound } from '../utils/audioFeedback';
 
 interface MapViewProps {
@@ -71,11 +71,10 @@ export const MapView: React.FC<MapViewProps> = ({
     if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      const initialLat = activeRep?.currentCoords.lat || 40.4350;
-      const initialLng = activeRep?.currentCoords.lng || -3.6900;
+      const initCoords = safeCoords(activeRep?.currentCoords, { lat: 40.4350, lng: -3.6900 });
 
       const map = L.map(mapContainerRef.current, {
-        center: [initialLat, initialLng],
+        center: [initCoords.lat, initCoords.lng],
         zoom: 13,
         zoomControl: false,
       });
@@ -171,7 +170,11 @@ export const MapView: React.FC<MapViewProps> = ({
 
     repsToDisplay.forEach((rep) => {
       const isSelected = rep.id === selectedRepId;
-      bounds.extend([rep.currentCoords.lat, rep.currentCoords.lng]);
+      const repCoords = safeCoords(rep.currentCoords, { lat: 40.4530, lng: -3.6883 });
+
+      if (isValidCoordinate(repCoords)) {
+        bounds.extend([repCoords.lat, repCoords.lng]);
+      }
 
       const statusColors: Record<string, { bg: string; text: string; label: string }> = {
         on_route: { bg: '#2563EB', text: '#FFFFFF', label: 'En Ruta' },
@@ -193,7 +196,7 @@ export const MapView: React.FC<MapViewProps> = ({
             <!-- Avatar / Initials badge -->
             <div style="position: relative; z-index: 2; width: 40px; height: 40px; border-radius: 9999px; background: ${sc.bg}; border: 3px solid #FFFFFF; box-shadow: 0 4px 14px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; overflow: hidden; transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'}; transition: transform 0.2s;">
               <span style="color: #ffffff; font-weight: 700; font-size: 13px; font-family: 'Plus Jakarta Sans', sans-serif;">
-                ${rep.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}
+                ${(rep.name || 'V').split(' ').map((n) => n[0]).join('').substring(0, 2)}
               </span>
             </div>
 
@@ -214,7 +217,7 @@ export const MapView: React.FC<MapViewProps> = ({
         iconAnchor: [24, 40],
       });
 
-      const repMarker = L.marker([rep.currentCoords.lat, rep.currentCoords.lng], { icon: repIcon })
+      const repMarker = L.marker([repCoords.lat, repCoords.lng], { icon: repIcon })
         .addTo(markersLayerRef.current!);
 
       repMarker.on('click', () => {
@@ -241,17 +244,21 @@ export const MapView: React.FC<MapViewProps> = ({
       repMarker.bindPopup(repPopupHtml);
 
       // Draw GPS Breadcrumbs / Route History
-      if (isSelected && rep.routeHistory && rep.routeHistory.length > 1) {
-        const polyCoords: [number, number][] = rep.routeHistory.map((p) => [p.lat, p.lng]);
-        polyCoords.push([rep.currentCoords.lat, rep.currentCoords.lng]);
+      if (isSelected && Array.isArray(rep.routeHistory) && rep.routeHistory.length > 0) {
+        const polyCoords: [number, number][] = rep.routeHistory
+          .filter((p) => isValidCoordinate(p))
+          .map((p) => [Number(p.lat), Number(p.lng)]);
+        polyCoords.push([repCoords.lat, repCoords.lng]);
 
-        L.polyline(polyCoords, {
-          color: '#3B82F6',
-          weight: 4,
-          opacity: 0.8,
-          dashArray: '4, 8',
-          lineCap: 'round',
-        }).addTo(routeLayerRef.current!);
+        if (polyCoords.length > 1) {
+          L.polyline(polyCoords, {
+            color: '#3B82F6',
+            weight: 4,
+            opacity: 0.8,
+            dashArray: '4, 8',
+            lineCap: 'round',
+          }).addTo(routeLayerRef.current!);
+        }
       }
     });
 
@@ -268,13 +275,18 @@ export const MapView: React.FC<MapViewProps> = ({
       }
 
       const isSelected = client.id === selectedClientId;
-      bounds.extend([client.coords.lat, client.coords.lng]);
+      const clientCoords = safeCoords(client.coords, { lat: 40.4200, lng: -3.7000 });
+
+      if (isValidCoordinate(clientCoords)) {
+        bounds.extend([clientCoords.lat, clientCoords.lng]);
+      }
 
       // Calculate distance from active sales rep
       const repToClientDistance = activeRep
-        ? calculateDistanceMeters(activeRep.currentCoords, client.coords)
+        ? calculateDistanceMeters(safeCoords(activeRep.currentCoords), clientCoords)
         : 9999;
-      const isInsideGeofence = repToClientDistance <= client.geofenceRadiusMeters;
+      const radius = Number.isFinite(client.geofenceRadiusMeters) ? client.geofenceRadiusMeters : 120;
+      const isInsideGeofence = repToClientDistance <= radius;
 
       let statusColor = '#64748B';
       let statusLabel = 'Sin visita hoy';
@@ -296,15 +308,15 @@ export const MapView: React.FC<MapViewProps> = ({
       }
 
       // Draw Geofence radius circle
-      const geofenceCircle = L.circle([client.coords.lat, client.coords.lng], {
-        radius: client.geofenceRadiusMeters,
+      const geofenceCircle = L.circle([clientCoords.lat, clientCoords.lng], {
+        radius,
         color: isInsideGeofence ? '#16A34A' : isSelected ? '#2563EB' : statusColor,
         weight: isInsideGeofence ? 2.5 : isSelected ? 2 : 1,
         fillColor: isInsideGeofence ? '#22C55E' : statusColor,
         fillOpacity: isInsideGeofence ? 0.25 : isSelected ? 0.18 : 0.08,
       }).addTo(geofenceLayerRef.current!);
 
-      geofenceCircle.bindTooltip(`Geocerca: ${client.geofenceRadiusMeters}m radio`, {
+      geofenceCircle.bindTooltip(`Geocerca: ${radius}m radio`, {
         permanent: false,
         direction: 'top',
       });
@@ -329,7 +341,7 @@ export const MapView: React.FC<MapViewProps> = ({
         iconAnchor: [19, 26],
       });
 
-      const clientMarker = L.marker([client.coords.lat, client.coords.lng], { icon: clientIcon })
+      const clientMarker = L.marker([clientCoords.lat, clientCoords.lng], { icon: clientIcon })
         .addTo(markersLayerRef.current!);
 
       clientMarker.on('click', () => {
@@ -357,7 +369,7 @@ export const MapView: React.FC<MapViewProps> = ({
               <span>${isInsideGeofence ? '✓ Dentro de la geocerca' : '⚠ Fuera de geocerca'}</span>
             </div>
             <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
-              Distancia actual del vendedor: <strong>${formatDistance(repToClientDistance)}</strong> (Radio permitido: ${client.geofenceRadiusMeters}m)
+              Distancia actual del vendedor: <strong>${formatDistance(repToClientDistance)}</strong> (Radio permitido: ${radius}m)
             </div>
           </div>
           ${clientVisit ? `
@@ -395,16 +407,20 @@ export const MapView: React.FC<MapViewProps> = ({
 
     // 3. Connect visits with planned route polyline
     if (repVisits.length > 0 && activeRep) {
+      const activeCoords = safeCoords(activeRep.currentCoords);
       const scheduledCoords: [number, number][] = [
-        [activeRep.currentCoords.lat, activeRep.currentCoords.lng],
+        [activeCoords.lat, activeCoords.lng],
       ];
 
       repVisits
-        .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime))
+        .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''))
         .forEach((v) => {
           const cl = clients.find((c) => c.id === v.clientId);
           if (cl) {
-            scheduledCoords.push([cl.coords.lat, cl.coords.lng]);
+            const clCoords = safeCoords(cl.coords);
+            if (isValidCoordinate(clCoords)) {
+              scheduledCoords.push([clCoords.lat, clCoords.lng]);
+            }
           }
         });
 
@@ -419,8 +435,17 @@ export const MapView: React.FC<MapViewProps> = ({
     }
 
     // Auto-fit if bounds are valid
-    if (bounds.isValid() && !map.getBounds().contains(bounds.getCenter())) {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    if (bounds.isValid()) {
+      try {
+        const center = bounds.getCenter();
+        if (isValidCoordinate({ lat: center.lat, lng: center.lng })) {
+          if (!map.getBounds().contains(center)) {
+            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+          }
+        }
+      } catch (err) {
+        console.warn('fitBounds error handled:', err);
+      }
     }
   }, [salesReps, clients, visits, selectedRepId, selectedClientId, showAllReps, filterVisitStatus, activeLayer]);
 
@@ -428,7 +453,8 @@ export const MapView: React.FC<MapViewProps> = ({
   const centerOnRep = () => {
     sound.playClick();
     if (!mapInstanceRef.current || !activeRep) return;
-    mapInstanceRef.current.flyTo([activeRep.currentCoords.lat, activeRep.currentCoords.lng], 15, {
+    const coords = safeCoords(activeRep.currentCoords);
+    mapInstanceRef.current.flyTo([coords.lat, coords.lng], 15, {
       duration: 1.0,
     });
   };
@@ -438,7 +464,8 @@ export const MapView: React.FC<MapViewProps> = ({
     if (!selectedClientId || !mapInstanceRef.current) return;
     const client = clients.find((c) => c.id === selectedClientId);
     if (client) {
-      mapInstanceRef.current.flyTo([client.coords.lat, client.coords.lng], 16, {
+      const coords = safeCoords(client.coords);
+      mapInstanceRef.current.flyTo([coords.lat, coords.lng], 16, {
         duration: 0.9,
       });
     }
