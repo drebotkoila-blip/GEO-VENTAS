@@ -7,6 +7,7 @@ interface NewVisitModalProps {
   clients: Client[];
   initialClientId?: string;
   initialCoords?: Coordinates | null;
+  initialDate?: string;
   onClose: () => void;
   onCreateVisit: (visitData: Omit<Visit, 'id'>) => void;
   onCreateClientAndVisit?: (clientData: Omit<Client, 'id'>, visitData: Omit<Visit, 'id' | 'clientId'>) => void;
@@ -17,6 +18,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
   clients,
   initialClientId,
   initialCoords,
+  initialDate,
   onClose,
   onCreateVisit,
   onCreateClientAndVisit,
@@ -27,7 +29,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
 
   const [repId, setRepId] = useState(salesReps[0]?.id || '');
   const [clientId, setClientId] = useState(initialClientId || clients[0]?.id || '');
-  const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().split('T')[0]);
+  const [scheduledDate, setScheduledDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
   const [scheduledTime, setScheduledTime] = useState('14:30');
   const [objective, setObjective] = useState('');
 
