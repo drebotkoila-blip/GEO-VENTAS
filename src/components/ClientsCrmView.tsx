@@ -32,7 +32,7 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
   const [countryFilter, setCountryFilter] = useState('all');
   const [visitFilter, setVisitFilter] = useState<'all' | 'with_visits' | 'without_visits' | 'with_sales'>('all');
   const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
-  const [displayMode, setDisplayMode] = useState<'cards' | 'table'>('cards');
+  const [displayMode, setDisplayMode] = useState<'cards' | 'table'>('table');
 
   // Categories & Countries lists
   const categories = Array.from(new Set(clients.map((c) => c.category).filter(Boolean)));
@@ -183,13 +183,33 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
             <button
               onClick={() => {
                 sound.playClick();
+                setDisplayMode('table');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                displayMode === 'table'
+                  ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/80'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Vista en Listado / Tabla"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+              <span>Listado</span>
+            </button>
+            <button
+              onClick={() => {
+                sound.playClick();
                 setDisplayMode('cards');
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                 displayMode === 'cards'
-                  ? 'bg-white text-slate-900 shadow-2xs'
+                  ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/80'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Vista en Tarjetas"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="7"/>
@@ -198,24 +218,6 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                 <rect x="3" y="14" width="7" height="7"/>
               </svg>
               <span>Tarjetas</span>
-            </button>
-            <button
-              onClick={() => {
-                sound.playClick();
-                setDisplayMode('table');
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                displayMode === 'table'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="3" y1="6" x2="21" y2="6"/>
-                <line x1="3" y1="12" x2="21" y2="12"/>
-                <line x1="3" y1="18" x2="21" y2="18"/>
-              </svg>
-              <span>Tabla</span>
             </button>
           </div>
 
@@ -465,7 +467,7 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                       <tr
                         key={client.id}
                         className={`hover:bg-slate-50/80 transition-colors ${
-                          isSelected ? 'bg-blue-50/30' : ''
+                          isSelected ? 'bg-blue-50/40' : ''
                         }`}
                       >
                         <td className="p-3 text-center">
@@ -476,35 +478,39 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                             className="w-4 h-4 rounded text-blue-600 border-slate-300 cursor-pointer"
                           />
                         </td>
-                        <td className="p-3 font-mono font-bold text-slate-800">
+                        <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">
                           {client.code ? (
-                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px]">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] border border-slate-200">
                               {client.code}
                             </span>
                           ) : (
                             <span className="text-slate-400 text-[11px]">s/c</span>
                           )}
                         </td>
-                        <td className="p-3">
+                        <td className="p-3 min-w-[180px]">
                           <div
                             onClick={() => onViewClientDrawer(client.id)}
-                            className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer transition-colors"
+                            className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer transition-colors flex items-center gap-1.5"
+                            title="Click para ver ficha completa"
                           >
-                            {client.name}
+                            <span>{client.name}</span>
                           </div>
                           <div className="text-[11px] text-slate-400 truncate max-w-xs">{client.company}</div>
                         </td>
-                        <td className="p-3">
-                          <div className="font-semibold text-slate-800">{client.city}</div>
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                            <span>{client.pais || 'España'}</span>
-                            <span>·</span>
-                            <span className="truncate max-w-[140px]" title={client.address}>{client.address}</span>
+                        <td className="p-3 min-w-[160px]">
+                          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <span>{client.city}</span>
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                              {client.pais || 'España'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate max-w-[180px] mt-0.5" title={client.address}>
+                            {client.address}
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="p-3 min-w-[180px]">
                           <div className="font-semibold text-slate-800">{client.contactName}</div>
-                          <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <a href={`tel:${client.phone}`} className="font-mono text-blue-600 hover:underline">
                               {client.phone}
                             </a>
@@ -513,36 +519,57 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                                 href={`https://wa.me/${cleanPhone}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-emerald-600 hover:text-emerald-700"
+                                className="text-emerald-600 hover:text-emerald-700 font-bold text-xs"
                                 title="Enviar WhatsApp"
                               >
-                                💬
+                                💬 WA
                               </a>
                             )}
                           </div>
+                          {client.email && (
+                            <div className="mt-0.5">
+                              <a
+                                href={`mailto:${client.email}`}
+                                className="text-[11px] text-slate-400 hover:text-slate-700 truncate max-w-[160px] inline-block"
+                                title={client.email}
+                              >
+                                {client.email}
+                              </a>
+                            </div>
+                          )}
                         </td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700">
+                        <td className="p-3 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
                             {client.category}
                           </span>
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center min-w-[140px]">
                           <div className="font-bold text-slate-900">
                             {clientVisits.length} {clientVisits.length === 1 ? 'visita' : 'visitas'}
                           </div>
-                          <div className="text-[11px] text-slate-500">
+                          <div className="text-[11px] text-slate-500 mt-0.5">
                             {completedVisits} completadas {clientSales > 0 ? `· ${clientSales.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}` : ''}
                           </div>
                         </td>
-                        <td className="p-3 text-right">
+                        <td className="p-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => {
+                                sound.playClick();
+                                onViewClientDrawer(client.id);
+                              }}
+                              className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                              title="Ver ficha y trazabilidad"
+                            >
+                              Ficha
+                            </button>
                             <button
                               onClick={() => {
                                 sound.playClick();
                                 onEditClient(client);
                               }}
                               className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                              title="Editar cliente"
+                              title="Editar cliente en Supabase"
                             >
                               Editar
                             </button>
@@ -551,8 +578,8 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                                 sound.playClick();
                                 onScheduleVisitForClient(client.id);
                               }}
-                              className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                              title="Programar visita"
+                              className="px-2 py-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                              title="Programar visita comercial"
                             >
                               + Visita
                             </button>
@@ -569,7 +596,7 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                             <button
                               onClick={() => {
                                 sound.playClick();
-                                if (window.confirm(`¿Eliminar al cliente ${client.name}?`)) {
+                                if (window.confirm(`¿Eliminar al cliente ${client.name} del CRM y Supabase?`)) {
                                   onDeleteClient(client.id);
                                 }
                               }}
