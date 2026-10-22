@@ -13,6 +13,8 @@ import { SupervisorDashboardView } from './components/SupervisorDashboardView';
 import { EmployeesView } from './components/EmployeesView';
 import { ClientsCrmView } from './components/ClientsCrmView';
 import { EditClientModal } from './components/EditClientModal';
+import { EditEmployeeModal } from './components/EditEmployeeModal';
+import { EditVisitModal } from './components/EditVisitModal';
 import { VisitCheckInModal } from './components/VisitCheckInModal';
 import { NewVisitModal } from './components/NewVisitModal';
 import { NewEmployeeModal } from './components/NewEmployeeModal';
@@ -79,6 +81,14 @@ export default function App() {
   // CRM Client Editing Modal state
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
   const [isEditClientModalOpen, setIsEditClientModalOpen] = useState<boolean>(false);
+
+  // Sales Rep (Vendedor) Editing Modal state
+  const [employeeToEdit, setEmployeeToEdit] = useState<SalesRep | null>(null);
+  const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState<boolean>(false);
+
+  // Visit Editing Modal state
+  const [visitToEdit, setVisitToEdit] = useState<Visit | null>(null);
+  const [isEditVisitModalOpen, setIsEditVisitModalOpen] = useState<boolean>(false);
 
   // Real-time Geolocation states
   const [isRealGpsActive, setIsRealGpsActive] = useState<boolean>(false);
@@ -587,6 +597,21 @@ export default function App() {
     }
   };
 
+  // DELETE MULTIPLE CLIENTS
+  const handleDeleteMultipleClients = (clientIds: string[]) => {
+    setClients((prev) => prev.filter((c) => !clientIds.includes(c.id)));
+
+    if (selectedClientId && clientIds.includes(selectedClientId)) {
+      setSelectedClientId(null);
+      setIsClientDrawerOpen(false);
+    }
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('clientes').delete().in('id', clientIds).then(() => {});
+    }
+  };
+
   // ADD NEW SALES REP (VENDEDOR)
   const handleAddEmployee = (
     employeeData: Omit<SalesRep, 'id' | 'totalDistanceKmToday' | 'routeHistory' | 'lastPing' | 'speedKmH'>
@@ -618,6 +643,25 @@ export default function App() {
     }
   };
 
+  // SAVE / EDIT SALES REP (VENDEDOR)
+  const handleSaveEmployee = (repData: SalesRep) => {
+    setSalesReps((prev) => {
+      const exists = prev.some((r) => r.id === repData.id);
+      if (exists) {
+        return prev.map((r) => (r.id === repData.id ? repData : r));
+      }
+      return [...prev, repData];
+    });
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('vendedores').upsert(mapRepToRow(repData)).then(() => {});
+    }
+
+    setIsEditEmployeeModalOpen(false);
+    setEmployeeToEdit(null);
+  };
+
   // DELETE SALES REP
   const handleDeleteEmployee = (repId: string) => {
     setSalesReps((prev) => {
@@ -630,6 +674,57 @@ export default function App() {
 
     if (supabaseState.isConnected) {
       supabase.from('vendedores').delete().eq('id', repId).then(() => {});
+    }
+  };
+
+  // DELETE MULTIPLE SALES REPS
+  const handleDeleteMultipleEmployees = (repIds: string[]) => {
+    setSalesReps((prev) => {
+      const updated = prev.filter((r) => !repIds.includes(r.id));
+      if (selectedRepId && repIds.includes(selectedRepId) && updated.length > 0) {
+        setSelectedRepId(updated[0].id);
+      }
+      return updated;
+    });
+
+    if (supabaseState.isConnected) {
+      supabase.from('vendedores').delete().in('id', repIds).then(() => {});
+    }
+  };
+
+  // SAVE / EDIT VISIT
+  const handleSaveVisit = (visitData: Visit) => {
+    setVisits((prev) => {
+      const exists = prev.some((v) => v.id === visitData.id);
+      if (exists) {
+        return prev.map((v) => (v.id === visitData.id ? visitData : v));
+      }
+      return [visitData, ...prev];
+    });
+
+    if (supabaseState.isConnected) {
+      supabase.from('visitas').upsert(mapVisitToRow(visitData)).then(() => {});
+    }
+
+    setIsEditVisitModalOpen(false);
+    setVisitToEdit(null);
+  };
+
+  // DELETE SINGLE VISIT
+  const handleDeleteVisit = (visitId: string) => {
+    setVisits((prev) => prev.filter((v) => v.id !== visitId));
+
+    if (supabaseState.isConnected) {
+      supabase.from('visitas').delete().eq('id', visitId).then(() => {});
+    }
+  };
+
+  // DELETE MULTIPLE VISITS
+  const handleDeleteMultipleVisits = (visitIds: string[]) => {
+    setVisits((prev) => prev.filter((v) => !visitIds.includes(v.id)));
+
+    if (supabaseState.isConnected) {
+      supabase.from('visitas').delete().in('id', visitIds).then(() => {});
     }
   };
 
@@ -949,6 +1044,12 @@ export default function App() {
                 visits={visits}
                 onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
                 onSelectClient={handleSelectClient}
+                onEditVisit={(visit) => {
+                  setVisitToEdit(visit);
+                  setIsEditVisitModalOpen(true);
+                }}
+                onDeleteVisit={handleDeleteVisit}
+                onDeleteMultipleVisits={handleDeleteMultipleVisits}
               />
             </div>
           </div>
@@ -980,6 +1081,12 @@ export default function App() {
               visits={visits}
               onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
               onSelectClient={handleSelectClient}
+              onEditVisit={(visit) => {
+                setVisitToEdit(visit);
+                setIsEditVisitModalOpen(true);
+              }}
+              onDeleteVisit={handleDeleteVisit}
+              onDeleteMultipleVisits={handleDeleteMultipleVisits}
             />
           </div>
         )}
@@ -998,6 +1105,12 @@ export default function App() {
               }}
               onSelectClient={handleSelectClient}
               onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
+              onEditEmployee={(rep) => {
+                setEmployeeToEdit(rep);
+                setIsEditEmployeeModalOpen(true);
+              }}
+              onDeleteEmployee={handleDeleteEmployee}
+              onDeleteMultipleEmployees={handleDeleteMultipleEmployees}
             />
 
             <div className="h-[460px]">
@@ -1022,6 +1135,10 @@ export default function App() {
             salesReps={salesReps}
             visits={visits}
             onOpenNewEmployeeModal={() => setIsNewEmployeeModalOpen(true)}
+            onEditEmployee={(rep) => {
+              setEmployeeToEdit(rep);
+              setIsEditEmployeeModalOpen(true);
+            }}
             onSelectRepAndGoToMap={(repId) => {
               setSelectedRepId(repId);
               setActiveTab('map');
@@ -1031,6 +1148,7 @@ export default function App() {
               setActiveTab('rep_view');
             }}
             onDeleteEmployee={handleDeleteEmployee}
+            onDeleteMultipleEmployees={handleDeleteMultipleEmployees}
             onScheduleVisitForRep={(repId) => {
               setSelectedRepId(repId);
               setIsNewVisitOpen(true);
@@ -1061,6 +1179,7 @@ export default function App() {
               setIsNewVisitOpen(true);
             }}
             onDeleteClient={handleDeleteClient}
+            onDeleteMultipleClients={handleDeleteMultipleClients}
             onViewClientDrawer={handleSelectClient}
           />
         )}
@@ -1151,6 +1270,38 @@ export default function App() {
           clients={clients}
           salesReps={salesReps}
           onClose={() => setIsHistoryOpen(false)}
+          onEditVisit={(visit) => {
+            setVisitToEdit(visit);
+            setIsEditVisitModalOpen(true);
+          }}
+          onDeleteVisit={handleDeleteVisit}
+          onDeleteMultipleVisits={handleDeleteMultipleVisits}
+        />
+      )}
+
+      {/* 7. Edit Sales Rep (Vendedor) Modal */}
+      {isEditEmployeeModalOpen && employeeToEdit && (
+        <EditEmployeeModal
+          rep={employeeToEdit}
+          onClose={() => {
+            setIsEditEmployeeModalOpen(false);
+            setEmployeeToEdit(null);
+          }}
+          onSaveEmployee={handleSaveEmployee}
+        />
+      )}
+
+      {/* 8. Edit Visit Modal */}
+      {isEditVisitModalOpen && visitToEdit && (
+        <EditVisitModal
+          visit={visitToEdit}
+          clients={clients}
+          salesReps={salesReps}
+          onClose={() => {
+            setIsEditVisitModalOpen(false);
+            setVisitToEdit(null);
+          }}
+          onSaveVisit={handleSaveVisit}
         />
       )}
 

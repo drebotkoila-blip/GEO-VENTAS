@@ -11,6 +11,7 @@ interface ClientsCrmViewProps {
   onSelectClientAndGoToMap: (clientId: string) => void;
   onScheduleVisitForClient: (clientId: string) => void;
   onDeleteClient: (clientId: string) => void;
+  onDeleteMultipleClients: (clientIds: string[]) => void;
   onViewClientDrawer: (clientId: string) => void;
 }
 
@@ -23,12 +24,14 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
   onSelectClientAndGoToMap,
   onScheduleVisitForClient,
   onDeleteClient,
+  onDeleteMultipleClients,
   onViewClientDrawer,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
 
   // Categories list
   const categories = Array.from(new Set(clients.map((c) => c.category)));
@@ -52,6 +55,38 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
     }
     return true;
   });
+
+  // Toggle selection
+  const handleToggleSelect = (clientId: string) => {
+    sound.playClick();
+    setSelectedClientIds((prev) =>
+      prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    sound.playClick();
+    if (selectedClientIds.length === filteredClients.length) {
+      setSelectedClientIds([]);
+    } else {
+      setSelectedClientIds(filteredClients.map((c) => c.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    sound.playClick();
+    setSelectedClientIds([]);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedClientIds.length === 0) return;
+    sound.playClick();
+    const count = selectedClientIds.length;
+    if (window.confirm(`¿Estás seguro de que deseas eliminar ${count} cliente(s) seleccionado(s) del CRM?`)) {
+      onDeleteMultipleClients(selectedClientIds);
+      setSelectedClientIds([]);
+    }
+  };
 
   // Calculate CRM KPIs
   const totalClients = clients.length;
@@ -91,56 +126,62 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
     }
   };
 
-  const exportClientsCsv = () => {
+  const exportClientsCsv = (onlySelected = false) => {
     sound.playClick();
+    const targetClients = onlySelected
+      ? clients.filter((c) => selectedClientIds.includes(c.id))
+      : filteredClients;
+
     const headers = ['ID', 'Nombre Comercial', 'Empresa', 'CIF', 'Contacto', 'Teléfono', 'Email', 'Dirección', 'Ciudad', 'Latitud', 'Longitud', 'Radio Geocerca (m)', 'Categoría', 'Prioridad', 'Estado'];
-    const rows = filteredClients.map((c) => [
+    const rows = targetClients.map((c) => [
       c.id,
       `"${c.name}"`,
       `"${c.company}"`,
-      c.cif || '',
+      `"${c.cif || ''}"`,
       `"${c.contactName}"`,
       `"${c.phone}"`,
-      c.email,
+      `"${c.email}"`,
       `"${c.address}"`,
-      c.city,
+      `"${c.city}"`,
       c.coords.lat,
       c.coords.lng,
       c.geofenceRadiusMeters,
-      c.category,
-      c.priority,
-      c.status || 'active',
+      `"${c.category}"`,
+      `"${c.priority}"`,
+      `"${c.status || 'active'}"`,
     ]);
 
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const csvContent = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `clientes_crm_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `clientes_crm_${onlySelected ? 'seleccionados_' : ''}${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const isAllSelected = filteredClients.length > 0 && selectedClientIds.length === filteredClients.length;
+
   return (
     <div className="space-y-6">
-      {/* Header & Main Actions */}
+      {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            CRM de Clientes & Cuentas Comerciales
+            Cartera de Clientes & CRM Comercial
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Gestión de clientes, geocercas de control GPS, datos de contacto y acuerdos comerciales
+            Gestión completa, edición de fichas, parámetros de geocerca GPS y registro comercial
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        <div className="flex items-center gap-2.5">
           <button
-            onClick={exportClientsCsv}
-            className="px-3.5 py-2 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
-            title="Descargar lista de clientes en formato CSV"
+            onClick={() => exportClientsCsv(false)}
+            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5"
+            title="Exportar clientes a archivo CSV"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -155,109 +196,179 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
               sound.playClick();
               onOpenNewClientModal();
             }}
-            className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+            className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            <span>+ Nuevo Cliente CRM</span>
+            <span>+ Nuevo Cliente</span>
           </button>
         </div>
       </div>
 
       {/* KPI Overview Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <span className="text-xs text-slate-500 block">Total Cartera CRM</span>
+          <span className="text-xs text-slate-500 block">Total Clientes</span>
           <span className="text-xl font-bold text-slate-900 font-mono tabular-nums block mt-1">
             {totalClients}
           </span>
-          <span className="text-[11px] text-emerald-600 font-medium">{activeCount} cuentas activas</span>
+          <span className="text-[11px] text-slate-400">Cuentas registradas</span>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+          <span className="text-xs text-slate-500 block">Cuentas Activas</span>
+          <span className="text-xl font-bold text-emerald-600 font-mono tabular-nums block mt-1">
+            {activeCount}
+          </span>
+          <span className="text-[11px] text-emerald-600 font-medium">Operando habitualmente</span>
         </div>
 
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
           <span className="text-xs text-slate-500 block">Cuentas Estratégicas</span>
-          <span className="text-xl font-bold text-slate-900 font-mono tabular-nums block mt-1">
+          <span className="text-xl font-bold text-red-600 font-mono tabular-nums block mt-1">
             {highPriorityCount}
           </span>
           <span className="text-[11px] text-red-600 font-medium">Prioridad Alta</span>
         </div>
 
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <span className="text-xs text-slate-500 block">Visitas en Agenda Hoy</span>
+          <span className="text-xs text-slate-500 block">Visitas de Hoy</span>
           <span className="text-xl font-bold text-blue-600 font-mono tabular-nums block mt-1">
             {todayVisitsCount}
           </span>
-          <span className="text-[11px] text-blue-600 font-medium">Paradas programadas</span>
+          <span className="text-[11px] text-blue-600 font-medium">En itinerario diario</span>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <span className="text-xs text-slate-500 block">Facturación Acumulada</span>
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs col-span-2 sm:col-span-1">
+          <span className="text-xs text-slate-500 block">Ventas Acumuladas</span>
           <span className="text-xl font-bold text-slate-900 font-mono tabular-nums block mt-1">
             {totalRevenue.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
           </span>
-          <span className="text-[11px] text-slate-400">Ventas cerradas en visitas</span>
+          <span className="text-[11px] text-emerald-600 font-medium">Facturación reportada</span>
         </div>
       </div>
 
-      {/* Toolbar & Filter Controls */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2 flex-1 max-w-sm">
-          <div className="relative w-full">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              placeholder="Buscar cliente, empresa, contacto o ciudad..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {/* Filters & Selection Toolbar */}
+      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 flex-1 min-w-[240px] max-w-md">
+            <div className="relative w-full">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Buscar por cliente, CIF, empresa, contacto, ciudad..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Todos los Sectores</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Todas las Prioridades</option>
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="baja">Baja</option>
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Todos los Estados CRM</option>
+              <option value="active">Activos</option>
+              <option value="prospect">Prospectos</option>
+              <option value="negotiation">En Negociación</option>
+              <option value="inactive">Inactivos</option>
+            </select>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Sector filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">Todos los Sectores</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+        {/* Multi-Selection Control Header */}
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+          <label className="flex items-center gap-2 cursor-pointer select-none font-semibold text-slate-700 hover:text-slate-900">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={handleSelectAll}
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+            />
+            <span>Seleccionar todos ({filteredClients.length})</span>
+          </label>
 
-          {/* Priority filter */}
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">Todas las Prioridades</option>
-            <option value="alta">Prioridad Alta</option>
-            <option value="media">Prioridad Media</option>
-            <option value="baja">Prioridad Baja</option>
-          </select>
-
-          {/* Status filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">Todos los Estados CRM</option>
-            <option value="active">Activos</option>
-            <option value="prospect">Prospectos</option>
-            <option value="negotiation">En Negociación</option>
-            <option value="inactive">Inactivos</option>
-          </select>
+          <span className="text-slate-400 font-mono">
+            {filteredClients.length} de {clients.length} clientes mostrados
+          </span>
         </div>
       </div>
+
+      {/* Floating / Sticky Bulk Action Bar */}
+      {selectedClientIds.length > 0 && (
+        <div className="sticky top-4 z-40 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold font-mono">
+              {selectedClientIds.length}
+            </span>
+            <span className="text-xs font-semibold">
+              {selectedClientIds.length === 1 ? '1 cliente seleccionado' : `${selectedClientIds.length} clientes seleccionados`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportClientsCsv(true)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition-colors flex items-center gap-1.5"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Exportar Selección</span>
+            </button>
+
+            <button
+              onClick={handleDeleteSelected}
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-bold text-white transition-colors flex items-center gap-1.5 shadow-xs"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>Eliminar en Grupo ({selectedClientIds.length})</span>
+            </button>
+
+            <button
+              onClick={handleClearSelection}
+              className="text-xs text-slate-400 hover:text-white px-2 py-1 transition-colors"
+            >
+              Deseleccionar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Clients Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -276,6 +387,7 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
           </div>
         ) : (
           filteredClients.map((client) => {
+            const isSelected = selectedClientIds.includes(client.id);
             const clientVisits = visits.filter((v) => v.clientId === client.id);
             const completedVisits = clientVisits.filter((v) => v.status === 'completed').length;
             const clientSales = clientVisits.reduce((acc, v) => acc + (v.saleAmount || 0), 0);
@@ -284,25 +396,40 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
             return (
               <div
                 key={client.id}
-                className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
+                className={`bg-white rounded-2xl border transition-all flex flex-col justify-between space-y-4 p-5 ${
+                  isSelected
+                    ? 'border-blue-500 ring-2 ring-blue-500/30 bg-blue-50/15 shadow-sm'
+                    : 'border-slate-200 shadow-xs hover:shadow-md'
+                }`}
               >
                 <div>
-                  {/* Top info row */}
+                  {/* Top info row with Selector Checkbox */}
                   <div className="flex items-start justify-between gap-2.5">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">
-                          {client.category}
-                        </span>
-                        <span className="text-slate-300">·</span>
-                        {getPriorityBadge(client.priority)}
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelect(client.id)}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-0.5 cursor-pointer shrink-0"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">
+                            {client.category}
+                          </span>
+                          <span className="text-slate-300">·</span>
+                          {getPriorityBadge(client.priority)}
+                        </div>
+                        <h3
+                          className="text-sm font-bold text-slate-900 mt-1 hover:text-blue-600 cursor-pointer transition-colors"
+                          onClick={() => onViewClientDrawer(client.id)}
+                        >
+                          {client.name}
+                        </h3>
+                        <p className="text-[11px] text-slate-500">
+                          {client.company} {client.cif ? `· ${client.cif}` : ''}
+                        </p>
                       </div>
-                      <h3 className="text-sm font-bold text-slate-900 mt-1 hover:text-blue-600 cursor-pointer transition-colors" onClick={() => onViewClientDrawer(client.id)}>
-                        {client.name}
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        {client.company} {client.cif ? `· ${client.cif}` : ''}
-                      </p>
                     </div>
 
                     {getStatusBadge(client.status)}
@@ -419,23 +546,21 @@ export const ClientsCrmView: React.FC<ClientsCrmViewProps> = ({
                     </button>
                   </div>
 
-                  {clients.length > 1 && (
-                    <button
-                      onClick={() => {
-                        sound.playClick();
-                        if (window.confirm(`¿Eliminar la cuenta de ${client.name} del CRM?`)) {
-                          onDeleteClient(client.id);
-                        }
-                      }}
-                      className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                      title="Eliminar cliente"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                      </svg>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      if (window.confirm(`¿Eliminar la cuenta de ${client.name} del CRM?`)) {
+                        onDeleteClient(client.id);
+                      }
+                    }}
+                    className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                    title="Eliminar cliente individual"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             );

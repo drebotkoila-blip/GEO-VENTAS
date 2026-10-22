@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SalesRep, Client, Visit } from '../types';
 import { calculateDistanceMeters, formatDistance } from '../utils/geoUtils';
+import { sound } from '../utils/audioFeedback';
 
 interface RepDashboardViewProps {
   rep: SalesRep;
@@ -8,6 +9,9 @@ interface RepDashboardViewProps {
   visits: Visit[];
   onOpenCheckInModal: (visit: Visit) => void;
   onSelectClient: (clientId: string) => void;
+  onEditVisit?: (visit: Visit) => void;
+  onDeleteVisit?: (visitId: string) => void;
+  onDeleteMultipleVisits?: (visitIds: string[]) => void;
 }
 
 export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
@@ -16,15 +20,48 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
   visits,
   onOpenCheckInModal,
   onSelectClient,
+  onEditVisit,
+  onDeleteVisit,
+  onDeleteMultipleVisits,
 }) => {
+  const [selectedVisitIds, setSelectedVisitIds] = useState<string[]>([]);
+
   // Filter today's visits for this rep
   const repVisits = visits.filter((v) => v.repId === rep.id);
   const sortedVisits = [...repVisits].sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
 
   const completedCount = repVisits.filter((v) => v.status === 'completed').length;
   const inProgressVisit = repVisits.find((v) => v.status === 'in_progress');
-  const nextScheduledVisit = repVisits.find((v) => v.status === 'scheduled');
   const totalSales = repVisits.reduce((acc, v) => acc + (v.saleAmount || 0), 0);
+
+  // Multi selection
+  const handleToggleSelect = (visitId: string) => {
+    sound.playClick();
+    setSelectedVisitIds((prev) =>
+      prev.includes(visitId) ? prev.filter((id) => id !== visitId) : [...prev, visitId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    sound.playClick();
+    if (selectedVisitIds.length === sortedVisits.length) {
+      setSelectedVisitIds([]);
+    } else {
+      setSelectedVisitIds(sortedVisits.map((v) => v.id));
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedVisitIds.length === 0 || !onDeleteMultipleVisits) return;
+    sound.playClick();
+    const count = selectedVisitIds.length;
+    if (window.confirm(`¿Eliminar ${count} visita(s) seleccionada(s) del itinerario?`)) {
+      onDeleteMultipleVisits(selectedVisitIds);
+      setSelectedVisitIds([]);
+    }
+  };
+
+  const isAllSelected = sortedVisits.length > 0 && selectedVisitIds.length === sortedVisits.length;
 
   return (
     <div className="space-y-4">
@@ -100,26 +137,88 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
                 <p className="text-xs text-slate-600">{client.address} · {client.contactName}</p>
               </div>
 
-              <button
-                onClick={() => onOpenCheckInModal(inProgressVisit)}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
-              >
-                <span>Finalizar Visita (Check-out)</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                {onEditVisit && (
+                  <button
+                    onClick={() => onEditVisit(inProgressVisit)}
+                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5"
+                    title="Editar visita"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9"/>
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                    <span>Editar</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => onOpenCheckInModal(inProgressVisit)}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                >
+                  <span>Finalizar Visita (Check-out)</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         );
       })()}
 
+      {/* Floating / Sticky Bulk Action Bar */}
+      {selectedVisitIds.length > 0 && onDeleteMultipleVisits && (
+        <div className="bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold font-mono">
+              {selectedVisitIds.length}
+            </span>
+            <span className="text-xs font-semibold">
+              {selectedVisitIds.length === 1 ? '1 visita seleccionada' : `${selectedVisitIds.length} visitas seleccionadas`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDeleteSelected}
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-bold text-white transition-colors flex items-center gap-1.5 shadow-xs"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>Eliminar en Grupo ({selectedVisitIds.length})</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedVisitIds([])}
+              className="text-xs text-slate-400 hover:text-white px-2 py-1 transition-colors"
+            >
+              Deseleccionar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* TODAY'S ITINERARY LIST */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Itinerario y Ruta de Visitas</h3>
-            <p className="text-xs text-slate-500">Secuencia de clientes programados para hoy</p>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none font-semibold text-xs text-slate-700 hover:text-slate-900">
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                onChange={handleSelectAll}
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+              />
+              <span>Seleccionar todas</span>
+            </label>
+            <span className="text-slate-300">·</span>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Itinerario y Ruta de Visitas</h3>
+              <p className="text-xs text-slate-500">Secuencia de clientes programados para hoy</p>
+            </div>
           </div>
           <span className="text-xs font-medium text-slate-500">
             {sortedVisits.length} paradas
@@ -131,6 +230,7 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
             const client = clients.find((c) => c.id === visit.clientId);
             if (!client) return null;
 
+            const isSelected = selectedVisitIds.includes(visit.id);
             const distance = calculateDistanceMeters(rep.currentCoords, client.coords);
             const isInsideGeofence = distance <= client.geofenceRadiusMeters;
 
@@ -138,12 +238,19 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
               <div
                 key={visit.id}
                 className={`p-4 transition-colors hover:bg-slate-50/80 ${
-                  visit.status === 'in_progress' ? 'bg-blue-50/30' : ''
+                  isSelected ? 'bg-blue-50/40 ring-1 ring-inset ring-blue-500/20' : visit.status === 'in_progress' ? 'bg-blue-50/30' : ''
                 }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  {/* Left: Time & Client Info */}
-                  <div className="flex items-start gap-3.5">
+                  {/* Left: Checkbox, Time & Client Info */}
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelect(visit.id)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 mt-1 cursor-pointer shrink-0"
+                    />
+
                     <div className="flex flex-col items-center">
                       <span className="text-xs font-mono font-bold text-slate-700 tabular-nums">
                         {visit.scheduledTime}
@@ -171,7 +278,7 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
                         <span>Contacto: <strong>{client.contactName}</strong></span>
                         <a
                           href={`tel:${client.phone}`}
-                          className="text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-blue-600 hover:underline flex items-center gap-1 font-mono"
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
@@ -196,7 +303,7 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
                       {/* Completed summary */}
                       {visit.status === 'completed' && (
                         <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 mt-2 space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-emerald-700 font-semibold">Visita Completada</span>
                             <span className="text-slate-400">·</span>
                             <span>Duración: {visit.durationMinutes} min</span>
@@ -216,7 +323,25 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
                   </div>
 
                   {/* Right Actions */}
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center flex-wrap">
+                    {/* EDIT VISIT BUTTON */}
+                    {onEditVisit && (
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          onEditVisit(visit);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-blue-700 bg-blue-50/50 hover:bg-blue-100/70 transition-colors flex items-center gap-1"
+                        title="Editar visita"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9"/>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                        </svg>
+                        <span>Editar</span>
+                      </button>
+                    )}
+
                     {/* Navigation Link (Google Maps) */}
                     <a
                       href={`https://www.google.com/maps/dir/?api=1&destination=${client.coords.lat},${client.coords.lng}`}
@@ -256,6 +381,25 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
                         className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors flex items-center gap-1.5"
                       >
                         <span>Finalizar Visita</span>
+                      </button>
+                    )}
+
+                    {/* DELETE VISIT BUTTON */}
+                    {onDeleteVisit && (
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          if (window.confirm(`¿Eliminar la visita de las ${visit.scheduledTime} a ${client.name}?`)) {
+                            onDeleteVisit(visit.id);
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Eliminar visita individual"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
                       </button>
                     )}
                   </div>
