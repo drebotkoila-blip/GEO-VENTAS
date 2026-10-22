@@ -41,6 +41,7 @@ export type ClientCategory = 'Retail' | 'Distribuidor' | 'Corporativo' | 'Pyme' 
 
 export interface Client {
   id: string;
+  code?: string; // Código de cliente (ej: CLI-001)
   name: string;
   company: string;
   cif?: string;
@@ -49,10 +50,11 @@ export interface Client {
   email: string;
   address: string;
   city: string;
+  pais?: string; // País (ej: España)
   coords: Coordinates;
-  geofenceRadiusMeters: number;
-  priority: 'alta' | 'media' | 'baja';
-  category: ClientCategory;
+  geofenceRadiusMeters?: number;
+  priority?: 'alta' | 'media' | 'baja';
+  category: ClientCategory | string;
   status?: ClientCrmStatus;
   notes?: string;
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Client, Visit, SalesRep } from '../types';
-import { calculateDistanceMeters, formatDistance } from '../utils/geoUtils';
+import { calculateDistanceMeters, formatDistance, safeCoords } from '../utils/geoUtils';
 import { sound } from '../utils/audioFeedback';
 
 interface ClientDetailDrawerProps {
@@ -28,12 +28,16 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
   const todayStr = new Date().toISOString().split('T')[0];
   const todayVisit = clientVisits.find((v) => v.scheduledDate === todayStr);
 
-  const distance = calculateDistanceMeters(activeRep.currentCoords, client.coords);
-  const isInsideGeofence = distance <= client.geofenceRadiusMeters;
+  const clientCoords = safeCoords(client.coords, { lat: 40.4200, lng: -3.7000 });
+  const repCoords = safeCoords(activeRep.currentCoords, { lat: 40.4530, lng: -3.6883 });
+  const distance = calculateDistanceMeters(repCoords, clientCoords);
+  const geofenceRadius = Number.isFinite(client.geofenceRadiusMeters) ? Number(client.geofenceRadiusMeters) : 120;
+  const isInsideGeofence = distance <= geofenceRadius;
 
   const totalSalesToClient = clientVisits.reduce((acc, v) => acc + (v.saleAmount || 0), 0);
+  const completedVisits = clientVisits.filter((v) => v.status === 'completed');
 
-  // Clean phone for whatsapp
+  // Clean phone for WhatsApp
   const cleanPhone = client.phone.replace(/[^0-9]/g, '');
 
   return (
@@ -41,11 +45,21 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
       {/* Header */}
       <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-start justify-between">
         <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
-            {client.category} · Prioridad {client.priority}
-          </span>
-          <h3 className="text-lg font-bold text-slate-900 mt-0.5">{client.name}</h3>
-          <p className="text-xs text-slate-500">{client.company} {client.cif ? `· ${client.cif}` : ''}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {client.code && (
+              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-800">
+                {client.code}
+              </span>
+            )}
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+              {client.category}
+            </span>
+            <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+              {client.pais || 'España'}
+            </span>
+          </div>
+          <h3 className="text-lg font-black text-slate-900 mt-1">{client.name}</h3>
+          <p className="text-xs text-slate-500">{client.company}</p>
         </div>
         <div className="flex items-center gap-1">
           {onEditClient && (
@@ -54,7 +68,7 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
                 sound.playClick();
                 onEditClient(client);
               }}
-              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors"
               title="Editar ficha completa de cliente"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -91,14 +105,14 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="font-semibold text-xs">
-              {isInsideGeofence ? '✓ Dentro del Radio de Check-in' : 'Fuera de Geocerca'}
+              {isInsideGeofence ? '✓ Dentro del Radio de Check-in' : 'Distancia desde vendedor activo'}
             </span>
             <span className="font-mono tabular-nums font-bold text-sm">
               {formatDistance(distance)}
             </span>
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            Radio autorizado de visita: <span className="font-mono tabular-nums">{client.geofenceRadiusMeters} metros</span>
+            Vendedor activo: <strong className="text-slate-700">{activeRep.name}</strong> ({activeRep.territory})
           </p>
 
           {todayVisit && todayVisit.status === 'scheduled' && onInitiateCheckIn && (
@@ -114,22 +128,32 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
           )}
         </div>
 
-        {/* Contact & Fast Actions */}
+        {/* Contact & Physical Address */}
         <div className="space-y-3">
-          <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">Contacto & Canales Directos</h4>
+          <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+            Datos de Contacto & Ubicación
+          </h4>
           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Persona de Contacto:</span>
               <span className="font-semibold text-slate-800">{client.contactName}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500">Dirección:</span>
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-slate-500 shrink-0">Dirección:</span>
               <span className="font-medium text-slate-800 text-right">{client.address}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-slate-500">Ciudad:</span>
-              <span className="font-medium text-slate-800">{client.city}</span>
+              <span className="text-slate-500">Ciudad & País:</span>
+              <span className="font-medium text-slate-800">{client.city}, {client.pais || 'España'}</span>
             </div>
+            {client.email && (
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Email:</span>
+                <a href={`mailto:${client.email}`} className="font-medium text-blue-600 hover:underline">
+                  {client.email}
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Quick Action Buttons */}
@@ -157,7 +181,7 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
             </a>
 
             <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${client.coords.lat},${client.coords.lng}`}
+              href={`https://www.google.com/maps/dir/?api=1&destination=${clientCoords.lat},${clientCoords.lng}`}
               target="_blank"
               rel="noreferrer"
               className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-blue-700 font-semibold text-center flex flex-col items-center gap-1 transition-colors"
@@ -170,45 +194,94 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
           </div>
         </div>
 
-        {/* Historical visits with this client */}
+        {/* Commercial Relationship & Visits Summary */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">Historial de Visitas</h4>
-            <span className="font-mono tabular-nums font-semibold text-slate-600">
-              Total facturado: {totalSalesToClient.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+            <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+              Relación Comercial & Visitas
+            </h4>
+            <span className="font-mono tabular-nums font-bold text-slate-800">
+              {totalSalesToClient > 0
+                ? totalSalesToClient.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
+                : '0,00 €'}
             </span>
           </div>
 
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span className="text-[10px] text-slate-400 block">Total Visitas</span>
+              <span className="font-mono tabular-nums font-bold text-slate-800 text-sm">
+                {clientVisits.length}
+              </span>
+            </div>
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <span className="text-[10px] text-slate-400 block">Completadas</span>
+              <span className="font-mono tabular-nums font-bold text-emerald-600 text-sm">
+                {completedVisits.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Visits Timeline List */}
           <div className="space-y-2">
             {clientVisits.length === 0 ? (
-              <p className="text-slate-400 italic">No hay registros previos para este cliente.</p>
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center text-slate-400">
+                <p>No hay visitas registradas para este cliente aún.</p>
+                <button
+                  onClick={() => {
+                    sound.playClick();
+                    onScheduleVisitForClient(client.id);
+                  }}
+                  className="mt-2 text-blue-600 font-bold hover:underline text-xs"
+                >
+                  + Programar la primera visita
+                </button>
+              </div>
             ) : (
               clientVisits.map((v) => {
                 const rep = salesReps.find((r) => r.id === v.repId);
                 return (
                   <div key={v.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">{v.scheduledDate} {v.scheduledTime}</span>
+                      <span className="font-bold text-slate-900 font-mono">
+                        {v.scheduledDate} · {v.scheduledTime}
+                      </span>
                       <span
-                        className={`font-semibold ${
+                        className={`font-semibold px-2 py-0.5 rounded-md text-[10px] ${
                           v.status === 'completed'
-                            ? 'text-emerald-700'
+                            ? 'bg-emerald-100 text-emerald-800'
                             : v.status === 'in_progress'
-                            ? 'text-blue-700'
-                            : 'text-amber-700'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-amber-100 text-amber-800'
                         }`}
                       >
-                        {v.status === 'completed' ? 'Completada' : v.status === 'in_progress' ? 'En Curso' : 'Programada'}
+                        {v.status === 'completed'
+                          ? 'Completada'
+                          : v.status === 'in_progress'
+                          ? 'En Curso'
+                          : 'Programada'}
                       </span>
                     </div>
 
-                    <p className="text-slate-600">{v.objective}</p>
+                    <p className="text-slate-700 text-xs font-medium">{v.objective}</p>
+
+                    {v.outcome && (
+                      <p className="text-[11px] text-slate-500">
+                        Resultado: <span className="font-semibold text-slate-700">{v.outcome}</span>
+                      </p>
+                    )}
+
+                    {v.notes && (
+                      <p className="text-[11px] text-slate-500 italic bg-white p-1.5 rounded border border-slate-100">
+                        "{v.notes}"
+                      </p>
+                    )}
 
                     <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-200">
-                      <span>Vendedor: <strong>{rep?.name || 'Vendedor'}</strong></span>
+                      <span>Vendedor: <strong>{rep?.name || 'No asignado'}</strong></span>
                       {v.saleAmount ? (
-                        <span className="font-bold text-slate-900 font-mono tabular-nums">
-                          {v.saleAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                        <span className="font-bold text-emerald-700 font-mono tabular-nums">
+                          +{v.saleAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                         </span>
                       ) : null}
                     </div>
@@ -233,7 +306,7 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
             <line x1="12" y1="5" x2="12" y2="19"/>
             <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          <span>Agendar Visita</span>
+          <span>Agendar Nueva Visita</span>
         </button>
       </div>
     </div>

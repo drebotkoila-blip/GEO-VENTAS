@@ -85,6 +85,7 @@ export const INITIAL_SALES_REPS: SalesRep[] = [
 export const INITIAL_CLIENTS: Client[] = [
   {
     id: 'client-1',
+    code: 'CLI-001',
     name: 'Distribuciones Farmacéuticas del Norte',
     company: 'DFN Salud S.L.',
     contactName: 'Dra. Elena Ruiz',
@@ -92,6 +93,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'elena.ruiz@dfnsalud.es',
     address: 'Paseo de la Castellana 140, Planta 6',
     city: 'Madrid',
+    pais: 'España',
     coords: { lat: 40.4532, lng: -3.6881 },
     geofenceRadiusMeters: 120,
     priority: 'alta',
@@ -99,6 +101,7 @@ export const INITIAL_CLIENTS: Client[] = [
   },
   {
     id: 'client-2',
+    code: 'CLI-002',
     name: 'Grupo Hospitalario Metropolitano',
     company: 'GHM Healthcare Group',
     contactName: 'Lic. Andrés Morales',
@@ -106,6 +109,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'compras@ghm.com',
     address: 'Calle de Serrano 88',
     city: 'Madrid',
+    pais: 'España',
     coords: { lat: 40.4305, lng: -3.6860 },
     geofenceRadiusMeters: 100,
     priority: 'alta',
@@ -113,6 +117,7 @@ export const INITIAL_CLIENTS: Client[] = [
   },
   {
     id: 'client-3',
+    code: 'CLI-003',
     name: 'Suministros Industriales Iberia',
     company: 'Iberia Supplies S.A.',
     contactName: 'Ing. Marcos Beltrán',
@@ -120,6 +125,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'mbeltran@iberiasupplies.es',
     address: 'Avenida de América 45',
     city: 'Madrid',
+    pais: 'España',
     coords: { lat: 40.4380, lng: -3.6740 },
     geofenceRadiusMeters: 150,
     priority: 'media',
@@ -127,6 +133,7 @@ export const INITIAL_CLIENTS: Client[] = [
   },
   {
     id: 'client-4',
+    code: 'CLI-004',
     name: 'Supermercados & Retail Gourmet',
     company: 'Gourmet Madrid S.L.',
     contactName: 'Patricia Soler',
@@ -134,6 +141,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'psoler@gourmetmadrid.com',
     address: 'Calle Gran Vía 32',
     city: 'Madrid',
+    pais: 'España',
     coords: { lat: 40.4200, lng: -3.7045 },
     geofenceRadiusMeters: 80,
     priority: 'alta',
@@ -141,6 +149,7 @@ export const INITIAL_CLIENTS: Client[] = [
   },
   {
     id: 'client-5',
+    code: 'CLI-005',
     name: 'Cadena Ópticas Visión Plus',
     company: 'Visión Plus Ibérica',
     contactName: 'Javier Pardo',
@@ -148,6 +157,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'jpardo@visionplus.es',
     address: 'Calle de Alcalá 112',
     city: 'Madrid',
+    pais: 'España',
     coords: { lat: 40.4240, lng: -3.6780 },
     geofenceRadiusMeters: 100,
     priority: 'media',
@@ -155,6 +165,7 @@ export const INITIAL_CLIENTS: Client[] = [
   },
   {
     id: 'client-6',
+    code: 'CLI-006',
     name: 'Logística & Paquetería Exprés',
     company: 'LogiExpress Europa',
     contactName: 'Roberto Fuentes',
@@ -162,6 +173,7 @@ export const INITIAL_CLIENTS: Client[] = [
     email: 'rfuentes@logiexpress.eu',
     address: 'Avenida de la Albufera 180',
     city: 'Madrid',
+    pais: 'España',
     coords: { lat: 40.3920, lng: -3.6550 },
     geofenceRadiusMeters: 200,
     priority: 'baja',

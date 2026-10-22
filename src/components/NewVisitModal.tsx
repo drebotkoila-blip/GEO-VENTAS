@@ -59,6 +59,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
       if (!newClientName || !newClientAddress || !onCreateClientAndVisit) return;
       onCreateClientAndVisit(
         {
+          code: `CLI-${Math.floor(100 + Math.random() * 900)}`,
           name: newClientName,
           company: newClientCompany || newClientName,
           contactName: newClientContact || 'Responsable de Compras',
@@ -66,6 +67,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
           email: 'contacto@cliente.com',
           address: newClientAddress,
           city: 'Madrid',
+          pais: 'España',
           coords: { lat: newClientLat, lng: newClientLng },
           geofenceRadiusMeters: geofenceRadius,
           priority: 'media',
@@ -151,7 +153,7 @@ export const NewVisitModal: React.FC<NewVisitModalProps> = ({
               >
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} · {c.address}
+                    {c.code ? `[${c.code}] ` : ''}{c.name} · {c.city} ({c.pais || 'España'})
                   </option>
                 ))}
               </select>

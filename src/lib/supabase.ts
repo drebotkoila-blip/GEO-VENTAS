@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { SalesRep, Client, Visit } from '../types';
-import { safeCoords } from '../utils/geoUtils';
+import { safeCoords, resolveClientCoords } from '../utils/geoUtils';
 
 // Strip any trailing /rest/v1 or trailing slash to get the valid base Supabase URL
 const rawUrl = import.meta.env.VITE_SUPABASE_URL || 'https://jeuqkaidbikwbdquhkaa.supabase.co/rest/v1/';
@@ -102,49 +102,55 @@ export function mapRepToRow(rep: SalesRep): any {
 }
 
 export function mapRowToClient(row: any): Client {
-  return {
-    id: row.id,
-    name: row.name,
-    company: row.company,
-    cif: row.cif,
-    contactName: row.contact_name,
-    phone: row.phone,
-    email: row.email,
+  const city = row.city || 'Madrid';
+  const pais = row['país'] || row.pais || 'España';
+  const fallbackCoords = resolveClientCoords({
+    id: String(row.id),
     address: row.address,
-    city: row.city,
-    coords: safeCoords(
-      row.lat !== undefined && row.lng !== undefined
+    city,
+    pais,
+    coords:
+      row.lat !== undefined && row.lng !== undefined && Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lng))
         ? { lat: Number(row.lat), lng: Number(row.lng) }
         : null,
-      { lat: 40.4200, lng: -3.7000 }
-    ),
-    geofenceRadiusMeters: Number.isFinite(Number(row.geofence_radius_meters)) ? Number(row.geofence_radius_meters) : 120,
+  });
+
+  return {
+    id: String(row.id),
+    code: row.code || undefined,
+    name: row.name || 'Cliente sin nombre',
+    company: row.company || row.name || '',
+    contactName: row.contact_name || 'Contacto Comercial',
+    phone: row.phone || '',
+    email: row.email || '',
+    address: row.address || '',
+    city: city,
+    pais: pais,
+    coords: safeCoords(fallbackCoords, { lat: 40.4200, lng: -3.7000 }),
+    geofenceRadiusMeters: 120,
     priority: row.priority || 'media',
     category: row.category || 'Retail',
     status: row.status || 'active',
-    notes: row.notes,
+    notes: row.notes || undefined,
+    cif: row.cif || undefined,
   };
 }
 
 export function mapClientToRow(c: Client): any {
-  const coords = safeCoords(c.coords, { lat: 40.4200, lng: -3.7000 });
+  // Only map the exact columns that exist in the updated Supabase 'clientes' table:
+  // [id, code, name, company, contact_name, phone, email, address, city, category, país]
   return {
     id: c.id,
+    code: c.code || null,
     name: c.name,
-    company: c.company,
-    cif: c.cif,
-    contact_name: c.contactName,
-    phone: c.phone,
-    email: c.email,
-    address: c.address,
-    city: c.city,
-    lat: coords.lat,
-    lng: coords.lng,
-    geofence_radius_meters: c.geofenceRadiusMeters,
-    priority: c.priority,
-    category: c.category,
-    status: c.status,
-    notes: c.notes,
+    company: c.company || c.name,
+    contact_name: c.contactName || '',
+    phone: c.phone || '',
+    email: c.email || '',
+    address: c.address || '',
+    city: c.city || 'Madrid',
+    category: c.category || 'Retail',
+    'país': c.pais || 'España',
   };
 }
 
@@ -251,6 +257,7 @@ CREATE TABLE IF NOT EXISTS public.vendedores (
 -- 2. Tabla de Clientes
 CREATE TABLE IF NOT EXISTS public.clientes (
     id TEXT PRIMARY KEY,
+    code TEXT,
     name TEXT NOT NULL,
     company TEXT,
     contact_name TEXT,
@@ -258,12 +265,8 @@ CREATE TABLE IF NOT EXISTS public.clientes (
     email TEXT,
     address TEXT NOT NULL,
     city TEXT DEFAULT 'Madrid',
-    lat DOUBLE PRECISION NOT NULL,
-    lng DOUBLE PRECISION NOT NULL,
-    geofence_radius_meters INTEGER DEFAULT 120,
-    priority TEXT DEFAULT 'media',
     category TEXT DEFAULT 'Retail',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    "país" TEXT DEFAULT 'España'
 );
 
 -- 3. Tabla de Visitas

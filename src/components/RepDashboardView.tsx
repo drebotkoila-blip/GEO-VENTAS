@@ -232,7 +232,7 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
 
             const isSelected = selectedVisitIds.includes(visit.id);
             const distance = calculateDistanceMeters(rep.currentCoords, client.coords);
-            const isInsideGeofence = distance <= client.geofenceRadiusMeters;
+            const isInsideGeofence = distance <= (client.geofenceRadiusMeters ?? 120);
 
             return (
               <div

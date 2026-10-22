@@ -33,11 +33,13 @@ export const VisitsHistoryModal: React.FC<VisitsHistoryModalProps> = ({
     return {
       ...v,
       repName: rep?.name || 'Vendedor',
+      clientCode: client?.code || '',
       clientCompany: client?.company || 'Empresa',
       clientName: client?.name || 'Cliente',
       clientContact: client?.contactName || '',
       clientAddress: client?.address || '',
       clientCity: client?.city || '',
+      clientPais: client?.pais || 'España',
     };
   });
 
@@ -288,8 +290,15 @@ export const VisitsHistoryModal: React.FC<VisitsHistoryModalProps> = ({
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{v.clientName}</div>
-                        <div className="text-[11px] text-slate-500">{v.clientCompany} · {v.clientAddress}</div>
+                        <div className="flex items-center gap-1.5">
+                          {v.clientCode && (
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                              {v.clientCode}
+                            </span>
+                          )}
+                          <span className="font-semibold text-slate-900">{v.clientName}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">{v.clientCompany} · {v.clientCity || v.clientAddress} ({v.clientPais})</div>
                       </td>
                       <td className="px-4 py-3 text-slate-700 font-medium">
                         {v.repName}

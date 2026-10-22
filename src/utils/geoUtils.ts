@@ -30,6 +30,72 @@ export function safeCoords(coord?: Coordinates | null, fallback = { lat: 40.4168
   return fallback;
 }
 
+// Major cities reference centers
+const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
+  madrid: { lat: 40.4168, lng: -3.7038 },
+  barcelona: { lat: 41.3851, lng: 2.1734 },
+  valencia: { lat: 39.4699, lng: -0.3763 },
+  sevilla: { lat: 37.3891, lng: -5.9845 },
+  zaragoza: { lat: 41.6488, lng: -0.8891 },
+  málaga: { lat: 36.7213, lng: -4.4214 },
+  malaga: { lat: 36.7213, lng: -4.4214 },
+  murcia: { lat: 37.9922, lng: -1.1307 },
+  bilbao: { lat: 43.2630, lng: -2.9350 },
+  'san sebastián': { lat: 43.3183, lng: -1.9812 },
+  'san sebastian': { lat: 43.3183, lng: -1.9812 },
+  donostia: { lat: 43.3183, lng: -1.9812 },
+  alicante: { lat: 38.3452, lng: -0.4810 },
+  córdoba: { lat: 37.8882, lng: -4.7794 },
+  cordoba: { lat: 37.8882, lng: -4.7794 },
+  valladolid: { lat: 41.6523, lng: -4.7245 },
+  vigo: { lat: 42.2406, lng: -8.7207 },
+  gijón: { lat: 43.5322, lng: -5.6611 },
+  gijon: { lat: 43.5322, lng: -5.6611 },
+  'a coruña': { lat: 43.3623, lng: -8.4115 },
+  coruña: { lat: 43.3623, lng: -8.4115 },
+  vitoria: { lat: 42.8467, lng: -2.6716 },
+  granada: { lat: 37.1773, lng: -3.5986 },
+  santander: { lat: 43.4623, lng: -3.8099 },
+  pamplona: { lat: 42.8125, lng: -1.6458 },
+  toledo: { lat: 39.8628, lng: -4.0273 },
+  lisboa: { lat: 38.7223, lng: -9.1393 },
+  porto: { lat: 41.1579, lng: -8.6291 },
+};
+
+/**
+ * Deterministically resolves coordinates for a client based on their city and address,
+ * ensuring valid, non-overlapping coordinates without NaN.
+ */
+export function resolveClientCoords(client: {
+  id: string;
+  address?: string;
+  city?: string;
+  pais?: string;
+  coords?: Coordinates | null;
+}): Coordinates {
+  if (isValidCoordinate(client.coords)) {
+    return safeCoords(client.coords);
+  }
+
+  const rawCity = (client.city || 'madrid').trim().toLowerCase();
+  const base = CITY_COORDS[rawCity] || CITY_COORDS['madrid'];
+
+  // Hash string into a deterministic micro-offset between -0.015 and +0.015
+  const seed = (client.address || '') + (client.id || '');
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const offsetLat = ((Math.abs(hash) % 300) - 150) / 10000;
+  const offsetLng = ((Math.abs(hash >> 3) % 300) - 150) / 10000;
+
+  return safeCoords({
+    lat: base.lat + offsetLat,
+    lng: base.lng + offsetLng,
+  });
+}
+
 /**
  * Calculates the great circle distance between two points on the earth in meters
  * using the Haversine formula.

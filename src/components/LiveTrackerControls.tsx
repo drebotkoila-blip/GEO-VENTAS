@@ -45,7 +45,7 @@ export const LiveTrackerControls: React.FC<LiveTrackerControlsProps> = ({
   let closestVisit: Visit | null = null;
   let minDistance = Infinity;
 
-  repScheduledVisits.forEach((visit) => {
+  for (const visit of repScheduledVisits) {
     const client = clients.find((c) => c.id === visit.clientId);
     if (client) {
       const dist = calculateDistanceMeters(activeRep.currentCoords, client.coords);
@@ -55,9 +55,11 @@ export const LiveTrackerControls: React.FC<LiveTrackerControlsProps> = ({
         closestVisit = visit;
       }
     }
-  });
+  }
 
-  const isInsideClosestGeofence = closestClient ? minDistance <= (closestClient as Client).geofenceRadiusMeters : false;
+  const isInsideClosestGeofence = closestClient
+    ? minDistance <= (closestClient.geofenceRadiusMeters ?? 120)
+    : false;
 
   // Sound alert when entering geofence
   useEffect(() => {

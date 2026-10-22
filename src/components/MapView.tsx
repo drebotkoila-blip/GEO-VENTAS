@@ -285,7 +285,9 @@ export const MapView: React.FC<MapViewProps> = ({
       const repToClientDistance = activeRep
         ? calculateDistanceMeters(safeCoords(activeRep.currentCoords), clientCoords)
         : 9999;
-      const radius = Number.isFinite(client.geofenceRadiusMeters) ? client.geofenceRadiusMeters : 120;
+      const radius = typeof client.geofenceRadiusMeters === 'number' && Number.isFinite(client.geofenceRadiusMeters)
+        ? client.geofenceRadiusMeters
+        : 120;
       const isInsideGeofence = repToClientDistance <= radius;
 
       let statusColor = '#64748B';
@@ -332,8 +334,8 @@ export const MapView: React.FC<MapViewProps> = ({
                 <circle cx="12" cy="10" r="3"/>
               </svg>
             </div>
-            <div style="margin-top: 3px; padding: 2px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.9); color: #ffffff; font-size: 10px; font-weight: 600; white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">
-              ${client.name}
+            <div style="margin-top: 3px; padding: 2px 6px; border-radius: 4px; background: rgba(15, 23, 42, 0.9); color: #ffffff; font-size: 10px; font-weight: 600; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">
+              ${client.code ? `[${client.code}] ` : ''}${client.name}
             </div>
           </div>
         `,
@@ -355,10 +357,15 @@ export const MapView: React.FC<MapViewProps> = ({
       popupDiv.style.fontFamily = "'Plus Jakarta Sans', sans-serif";
       popupDiv.innerHTML = `
         <div style="padding: 2px;">
-          <div style="font-weight: 700; font-size: 14px; color: #0f172a; margin-bottom: 2px;">${client.name}</div>
-          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">${client.company} · ${client.category}</div>
+          <div style="font-weight: 700; font-size: 14px; color: #0f172a; margin-bottom: 2px;">
+            ${client.code ? `<span style="font-family: monospace; font-size: 11px; background: #e2e8f0; padding: 1px 5px; border-radius: 4px; margin-right: 4px;">${client.code}</span>` : ''}
+            ${client.name}
+          </div>
+          <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">
+            ${client.company} · ${client.category} · ${client.pais || 'España'}
+          </div>
           <div style="font-size: 11px; color: #334155; margin-bottom: 6px;">
-            <strong>Dirección:</strong> ${client.address}
+            <strong>Ubicación:</strong> ${client.address}, ${client.city}
           </div>
           <div style="font-size: 11px; color: #334155; margin-bottom: 8px;">
             <strong>Contacto:</strong> ${client.contactName} (${client.phone})

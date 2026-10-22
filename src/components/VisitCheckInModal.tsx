@@ -32,7 +32,7 @@ export const VisitCheckInModal: React.FC<VisitCheckInModalProps> = ({
 
   // Distance calculation
   const distanceToClient = calculateDistanceMeters(rep.currentCoords, client.coords);
-  const isWithinGeofence = distanceToClient <= client.geofenceRadiusMeters;
+  const isWithinGeofence = distanceToClient <= (client.geofenceRadiusMeters ?? 120);
 
   // Form states
   const [overrideReason, setOverrideReason] = useState('');
