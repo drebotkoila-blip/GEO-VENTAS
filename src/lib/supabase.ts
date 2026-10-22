@@ -100,6 +100,7 @@ export function mapRowToClient(row: any): Client {
     id: row.id,
     name: row.name,
     company: row.company,
+    cif: row.cif,
     contactName: row.contact_name,
     phone: row.phone,
     email: row.email,
@@ -112,6 +113,8 @@ export function mapRowToClient(row: any): Client {
     geofenceRadiusMeters: Number(row.geofence_radius_meters ?? 120),
     priority: row.priority || 'media',
     category: row.category || 'Retail',
+    status: row.status || 'active',
+    notes: row.notes,
   };
 }
 
@@ -120,6 +123,7 @@ export function mapClientToRow(c: Client): any {
     id: c.id,
     name: c.name,
     company: c.company,
+    cif: c.cif,
     contact_name: c.contactName,
     phone: c.phone,
     email: c.email,
@@ -130,6 +134,8 @@ export function mapClientToRow(c: Client): any {
     geofence_radius_meters: c.geofenceRadiusMeters,
     priority: c.priority,
     category: c.category,
+    status: c.status,
+    notes: c.notes,
   };
 }
 

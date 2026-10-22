@@ -35,10 +35,15 @@ export interface SalesRep {
   routeHistory: RoutePoint[];
 }
 
+export type ClientCrmStatus = 'active' | 'prospect' | 'inactive' | 'negotiation';
+
+export type ClientCategory = 'Retail' | 'Distribuidor' | 'Corporativo' | 'Pyme' | 'Salud' | 'Industria' | 'Otro';
+
 export interface Client {
   id: string;
   name: string;
   company: string;
+  cif?: string;
   contactName: string;
   phone: string;
   email: string;
@@ -47,7 +52,9 @@ export interface Client {
   coords: Coordinates;
   geofenceRadiusMeters: number;
   priority: 'alta' | 'media' | 'baja';
-  category: 'Retail' | 'Distribuidor' | 'Corporativo' | 'Pyme';
+  category: ClientCategory;
+  status?: ClientCrmStatus;
+  notes?: string;
 }
 
 export interface Visit {

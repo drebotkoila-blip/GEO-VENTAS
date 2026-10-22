@@ -11,6 +11,7 @@ interface ClientDetailDrawerProps {
   onClose: () => void;
   onScheduleVisitForClient: (clientId: string) => void;
   onInitiateCheckIn?: (visit: Visit) => void;
+  onEditClient?: (client: Client) => void;
 }
 
 export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
@@ -21,6 +22,7 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
   onClose,
   onScheduleVisitForClient,
   onInitiateCheckIn,
+  onEditClient,
 }) => {
   const clientVisits = visits.filter((v) => v.clientId === client.id);
   const todayStr = new Date().toISOString().split('T')[0];
@@ -43,20 +45,38 @@ export const ClientDetailDrawer: React.FC<ClientDetailDrawerProps> = ({
             {client.category} · Prioridad {client.priority}
           </span>
           <h3 className="text-lg font-bold text-slate-900 mt-0.5">{client.name}</h3>
-          <p className="text-xs text-slate-500">{client.company}</p>
+          <p className="text-xs text-slate-500">{client.company} {client.cif ? `· ${client.cif}` : ''}</p>
         </div>
-        <button
-          onClick={() => {
-            sound.playClick();
-            onClose();
-          }}
-          className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/50 transition-colors"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          {onEditClient && (
+            <button
+              onClick={() => {
+                sound.playClick();
+                onEditClient(client);
+              }}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-xs transition-colors"
+              title="Editar ficha completa de cliente"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+              <span>Editar</span>
+            </button>
+          )}
+          <button
+            onClick={() => {
+              sound.playClick();
+              onClose();
+            }}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/50 transition-colors"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Body */}

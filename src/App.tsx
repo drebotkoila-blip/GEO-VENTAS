@@ -11,6 +11,8 @@ import { LiveTrackerControls } from './components/LiveTrackerControls';
 import { RepDashboardView } from './components/RepDashboardView';
 import { SupervisorDashboardView } from './components/SupervisorDashboardView';
 import { EmployeesView } from './components/EmployeesView';
+import { ClientsCrmView } from './components/ClientsCrmView';
+import { EditClientModal } from './components/EditClientModal';
 import { VisitCheckInModal } from './components/VisitCheckInModal';
 import { NewVisitModal } from './components/NewVisitModal';
 import { NewEmployeeModal } from './components/NewEmployeeModal';
@@ -31,7 +33,7 @@ import {
   SupabaseSyncState,
 } from './lib/supabase';
 
-type ActiveTab = 'map' | 'rep_view' | 'supervisor' | 'employees';
+type ActiveTab = 'map' | 'rep_view' | 'supervisor' | 'employees' | 'clients';
 
 export default function App() {
   // Persistence with localStorage fallback
@@ -73,6 +75,10 @@ export default function App() {
   const [isNewEmployeeModalOpen, setIsNewEmployeeModalOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [pickedMapCoords, setPickedMapCoords] = useState<Coordinates | null>(null);
+
+  // CRM Client Editing Modal state
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+  const [isEditClientModalOpen, setIsEditClientModalOpen] = useState<boolean>(false);
 
   // Real-time Geolocation states
   const [isRealGpsActive, setIsRealGpsActive] = useState<boolean>(false);
@@ -185,6 +191,24 @@ export default function App() {
             setSalesReps((prev) => {
               if (prev.some((r) => r.id === newRep.id)) return prev;
               return [...prev, newRep];
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'clientes' },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updatedClient = mapRowToClient(payload.new);
+            setClients((prev) =>
+              prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
+            );
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            const newClient = mapRowToClient(payload.new);
+            setClients((prev) => {
+              if (prev.some((c) => c.id === newClient.id)) return prev;
+              return [newClient, ...prev];
             });
           }
         }
@@ -529,6 +553,40 @@ export default function App() {
     }
   };
 
+  // SAVE CLIENT (CREATE OR EDIT)
+  const handleSaveClient = (clientData: Client) => {
+    setClients((prev) => {
+      const exists = prev.some((c) => c.id === clientData.id);
+      if (exists) {
+        return prev.map((c) => (c.id === clientData.id ? clientData : c));
+      }
+      return [clientData, ...prev];
+    });
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('clientes').upsert(mapClientToRow(clientData)).then(() => {});
+    }
+
+    setIsEditClientModalOpen(false);
+    setClientToEdit(null);
+  };
+
+  // DELETE CLIENT
+  const handleDeleteClient = (clientId: string) => {
+    setClients((prev) => prev.filter((c) => c.id !== clientId));
+
+    if (selectedClientId === clientId) {
+      setSelectedClientId(null);
+      setIsClientDrawerOpen(false);
+    }
+
+    // Sync to Supabase
+    if (supabaseState.isConnected) {
+      supabase.from('clientes').delete().eq('id', clientId).then(() => {});
+    }
+  };
+
   // ADD NEW SALES REP (VENDEDOR)
   const handleAddEmployee = (
     employeeData: Omit<SalesRep, 'id' | 'totalDistanceKmToday' | 'routeHistory' | 'lastPing' | 'speedKmH'>
@@ -602,7 +660,7 @@ export default function App() {
           Zone 1: Brand Wordmark (one line)
           Zone 2: 4-5 Nav links (single line)
           Zone 3: 1 Primary action */}
-      <header className="flex items-center justify-between gap-8 px-6 py-3.5 bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+      <header className="flex items-center justify-between gap-6 px-6 py-3.5 bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
         {/* Zone 1: Brand Wordmark */}
         <div className="flex items-center gap-2.5 whitespace-nowrap shrink-0">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white shadow-sm">
@@ -617,7 +675,7 @@ export default function App() {
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
+        <nav className="hidden md:flex items-center gap-5 text-sm font-semibold text-slate-600">
           <button
             onClick={() => {
               sound.playClick();
@@ -661,6 +719,17 @@ export default function App() {
             }`}
           >
             Vendedores
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('clients');
+            }}
+            className={`transition-colors whitespace-nowrap shrink-0 ${
+              activeTab === 'clients' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
+            }`}
+          >
+            Clientes CRM
           </button>
           <button
             onClick={() => {
@@ -732,6 +801,15 @@ export default function App() {
           >
             Vendedores
           </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('clients');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'clients' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
+          >
+            CRM
+          </button>
         </div>
 
         {/* Rep Selector & Map Modes */}
@@ -770,6 +848,32 @@ export default function App() {
 
         {/* Supabase status indicator & actions */}
         <div className="flex items-center gap-3 ml-auto">
+          {/* Quick CRM Client action if on clients tab */}
+          {activeTab === 'clients' ? (
+            <button
+              onClick={() => {
+                sound.playClick();
+                setClientToEdit(null);
+                setIsEditClientModalOpen(true);
+              }}
+              className="text-blue-600 hover:text-blue-800 font-bold transition-colors flex items-center gap-1"
+            >
+              <span>+ Nuevo Cliente CRM</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                sound.playClick();
+                setIsNewEmployeeModalOpen(true);
+              }}
+              className="text-blue-600 hover:text-blue-800 font-bold transition-colors flex items-center gap-1"
+            >
+              <span>+ Alta Vendedor</span>
+            </button>
+          )}
+
+          <span className="text-slate-300">|</span>
+
           {/* Supabase connection badge */}
           <button
             onClick={() => {
@@ -787,15 +891,6 @@ export default function App() {
             <span>{supabaseState.isConnected ? 'Supabase Conectado' : 'Supabase (Configurar)'}</span>
           </button>
 
-          <button
-            onClick={() => {
-              sound.playClick();
-              setIsNewEmployeeModalOpen(true);
-            }}
-            className="text-blue-600 hover:text-blue-800 font-bold transition-colors flex items-center gap-1"
-          >
-            <span>+ Alta Vendedor</span>
-          </button>
           <span className="text-slate-300">|</span>
           <button
             onClick={handleResetData}
@@ -942,6 +1037,33 @@ export default function App() {
             }}
           />
         )}
+
+        {/* VIEW 5: CLIENTES CRM EDITABLE */}
+        {activeTab === 'clients' && (
+          <ClientsCrmView
+            clients={clients}
+            visits={visits}
+            salesReps={salesReps}
+            onOpenNewClientModal={() => {
+              setClientToEdit(null);
+              setIsEditClientModalOpen(true);
+            }}
+            onEditClient={(client) => {
+              setClientToEdit(client);
+              setIsEditClientModalOpen(true);
+            }}
+            onSelectClientAndGoToMap={(clientId) => {
+              setSelectedClientId(clientId);
+              setActiveTab('map');
+            }}
+            onScheduleVisitForClient={(clientId) => {
+              setSelectedClientId(clientId);
+              setIsNewVisitOpen(true);
+            }}
+            onDeleteClient={handleDeleteClient}
+            onViewClientDrawer={handleSelectClient}
+          />
+        )}
       </main>
 
       {/* MODALS & DRAWERS */}
@@ -960,6 +1082,10 @@ export default function App() {
           onInitiateCheckIn={(visit) => {
             setIsClientDrawerOpen(false);
             setActiveModalVisit(visit);
+          }}
+          onEditClient={(client) => {
+            setClientToEdit(client);
+            setIsEditClientModalOpen(true);
           }}
         />
       )}
@@ -1005,7 +1131,20 @@ export default function App() {
         />
       )}
 
-      {/* 5. History & Audit Modal */}
+      {/* 5. Edit or Create Client CRM Modal */}
+      {isEditClientModalOpen && (
+        <EditClientModal
+          client={clientToEdit}
+          initialCoords={pickedMapCoords}
+          onClose={() => {
+            setIsEditClientModalOpen(false);
+            setClientToEdit(null);
+          }}
+          onSaveClient={handleSaveClient}
+        />
+      )}
+
+      {/* 6. History & Audit Modal */}
       {isHistoryOpen && (
         <VisitsHistoryModal
           visits={visits}
@@ -1015,7 +1154,7 @@ export default function App() {
         />
       )}
 
-      {/* 6. Supabase Sync Modal */}
+      {/* 7. Supabase Sync Modal */}
       {isSupabaseModalOpen && (
         <SupabaseSyncModal
           syncState={supabaseState}
