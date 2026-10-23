@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SalesRep, Client, Visit } from '../types';
-import { calculateDistanceMeters, formatDistance } from '../utils/geoUtils';
+import { calculateDistanceMeters, formatDistance, isValidCoordinate } from '../utils/geoUtils';
 import { sound } from '../utils/audioFeedback';
 
 interface RepDashboardViewProps {
@@ -33,6 +33,35 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
   const completedCount = repVisits.filter((v) => v.status === 'completed').length;
   const inProgressVisit = repVisits.find((v) => v.status === 'in_progress');
   const totalSales = repVisits.reduce((acc, v) => acc + (v.saleAmount || 0), 0);
+
+  // Generate Google Maps Daily Route with multi-stop waypoints
+  const googleMapsDailyRouteUrl = useMemo(() => {
+    const validStops: { lat: number; lng: number }[] = [];
+    for (const v of sortedVisits) {
+      const client = clients.find((c) => c.id === v.clientId);
+      if (client && client.coords && isValidCoordinate(client.coords)) {
+        validStops.push({ lat: client.coords.lat, lng: client.coords.lng });
+      }
+    }
+
+    if (validStops.length === 0) return null;
+
+    const origin = `${rep.currentCoords.lat},${rep.currentCoords.lng}`;
+
+    if (validStops.length === 1) {
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${validStops[0].lat},${validStops[0].lng}&travelmode=driving`;
+    }
+
+    const finalDest = validStops[validStops.length - 1];
+    const waypoints = validStops
+      .slice(0, validStops.length - 1)
+      .map((s) => `${s.lat},${s.lng}`)
+      .join('|');
+
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${finalDest.lat},${finalDest.lng}&waypoints=${encodeURIComponent(
+      waypoints
+    )}&travelmode=driving`;
+  }, [sortedVisits, clients, rep.currentCoords]);
 
   // Multi selection
   const handleToggleSelect = (visitId: string) => {
@@ -201,9 +230,51 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
         </div>
       )}
 
+      {/* GOOGLE MAPS ROUTE HERO BANNER */}
+      {sortedVisits.length > 0 && googleMapsDailyRouteUrl && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200/90 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs text-lg">
+              🗺️
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900">
+                  Ruta Diaria en Google Maps
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  {sortedVisits.length} {sortedVisits.length === 1 ? 'parada' : 'paradas consecutivas'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Abre el itinerario completo en la app de Google Maps con todas las paradas en orden y navegación por voz en tiempo real para tu vehículo.
+              </p>
+            </div>
+          </div>
+
+          <a
+            href={googleMapsDailyRouteUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-transform hover:scale-[1.02] flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
+            title="Abrir todas las paradas en Google Maps con navegación GPS"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+            </svg>
+            <span>Iniciar Ruta en Google Maps</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        </div>
+      )}
+
       {/* TODAY'S ITINERARY LIST */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 cursor-pointer select-none font-semibold text-xs text-slate-700 hover:text-slate-900">
               <input
@@ -220,9 +291,26 @@ export const RepDashboardView: React.FC<RepDashboardViewProps> = ({
               <p className="text-xs text-slate-500">Secuencia de clientes programados para hoy</p>
             </div>
           </div>
-          <span className="text-xs font-medium text-slate-500">
-            {sortedVisits.length} paradas
-          </span>
+          <div className="flex items-center gap-2.5">
+            {googleMapsDailyRouteUrl && (
+              <a
+                href={googleMapsDailyRouteUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors flex items-center gap-1.5"
+                title="Abrir la ruta de hoy en Google Maps"
+              >
+                <span>🗺️ Google Maps ({sortedVisits.length})</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                </svg>
+              </a>
+            )}
+            <span className="text-xs font-medium text-slate-500">
+              {sortedVisits.length} paradas
+            </span>
+          </div>
         </div>
 
         <div className="divide-y divide-slate-100">

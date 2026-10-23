@@ -47,6 +47,28 @@ export const MapView: React.FC<MapViewProps> = ({
   // Find active rep
   const activeRep = salesReps.find((r) => r.id === selectedRepId) || salesReps[0];
 
+  // Google Maps daily route URL for selected rep
+  const googleMapsRepRouteUrl = React.useMemo(() => {
+    if (!activeRep) return null;
+    const repVisits = visits.filter((v) => v.repId === activeRep.id);
+    const sorted = [...repVisits].sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+    const stops: { lat: number; lng: number }[] = [];
+    for (const v of sorted) {
+      const c = clients.find((client) => client.id === v.clientId);
+      if (c && c.coords && isValidCoordinate(c.coords)) {
+        stops.push({ lat: c.coords.lat, lng: c.coords.lng });
+      }
+    }
+    if (stops.length === 0) return null;
+    const origin = `${activeRep.currentCoords.lat},${activeRep.currentCoords.lng}`;
+    if (stops.length === 1) {
+      return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${stops[0].lat},${stops[0].lng}&travelmode=driving`;
+    }
+    const dest = stops[stops.length - 1];
+    const waypoints = stops.slice(0, stops.length - 1).map((s) => `${s.lat},${s.lng}`).join('|');
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest.lat},${dest.lng}&waypoints=${encodeURIComponent(waypoints)}&travelmode=driving`;
+  }, [activeRep, visits, clients]);
+
   // Tile layer configurations (100% free, no API key required)
   const tileConfigs: Record<MapLayerType, { url: string; maxZoom: number; attribution: string }> = {
     streets: {
@@ -533,6 +555,26 @@ export const MapView: React.FC<MapViewProps> = ({
               </svg>
               <span>{isPickingLocation ? 'Haz clic en el mapa...' : 'Fijar Punto'}</span>
             </button>
+          )}
+
+          {/* Open Route in Google Maps button */}
+          {googleMapsRepRouteUrl && (
+            <a
+              href={googleMapsRepRouteUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+              title={`Abrir ruta diaria de ${activeRep?.name || 'vendedor'} en Google Maps con paradas consecutivas`}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+              </svg>
+              <span>Google Maps</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+              </svg>
+            </a>
           )}
 
           {/* Map Layer Selector */}
