@@ -1104,7 +1104,7 @@ export default function App() {
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-5 text-sm font-semibold text-slate-600">
+        <nav className="hidden md:flex items-center gap-3.5 lg:gap-5 text-sm font-semibold text-slate-600 overflow-x-auto scrollbar-none py-1">
           <button
             onClick={() => {
               sound.playClick();
@@ -1186,6 +1186,26 @@ export default function App() {
             <span>Artículos</span>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
               {articles.length}
+            </span>
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('sales');
+            }}
+            className={`transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'sales' ? 'text-blue-600 font-bold border-b-2 border-blue-600 pb-0.5' : 'hover:text-slate-900'
+            }`}
+          >
+            <span className="flex items-center gap-1">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+              <span>Ventas</span>
+            </span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">
+              {sales.length}
             </span>
           </button>
           <button
@@ -1284,6 +1304,20 @@ export default function App() {
             className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'articles' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
           >
             Artículos
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('sales');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 shrink-0 ${
+              activeTab === 'sales' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600'
+            }`}
+          >
+            <span>Ventas</span>
+            <span className={`text-[9px] px-1 py-0.2 rounded-full font-bold ${activeTab === 'sales' ? 'bg-white text-blue-800' : 'bg-slate-200 text-slate-700'}`}>
+              {sales.length}
+            </span>
           </button>
         </div>
 
