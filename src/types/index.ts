@@ -105,3 +105,14 @@ export interface Article {
   fechaInvent: string;
 }
 
+export interface Sale {
+  id?: string;
+  cliente: string;
+  idCliente: string;
+  referencia: number;
+  vendedor: string;
+  fecha: string; // YYYY-MM-DD
+  cantidad: number;
+  importe: number;
+}
+

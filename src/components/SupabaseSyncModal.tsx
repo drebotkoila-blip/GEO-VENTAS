@@ -17,6 +17,7 @@ interface SupabaseSyncModalProps {
   clientesCount: number;
   visitasCount: number;
   articulosCount?: number;
+  ventasCount?: number;
 }
 
 export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
@@ -28,14 +29,42 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
   clientesCount,
   visitasCount,
   articulosCount = 77,
+  ventasCount = 28,
 }) => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql'>('status');
-  const [sqlType, setSqlType] = useState<'all' | 'articulos'>('articulos');
+  const [sqlType, setSqlType] = useState<'all' | 'articulos' | 'ventas'>('ventas');
   const [isSyncing, setIsSyncing] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
-  const currentSqlText = sqlType === 'articulos' ? ARTICULOS_FULL_SQL : SUPABASE_SQL_SETUP;
+  const VENTAS_SQL = `-- TABLA VENTAS EN SUPABASE Y POLÍTICAS DE ACCESO
+CREATE TABLE IF NOT EXISTS public."VENTAS" (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  cliente text NOT NULL,
+  id_cliente text,
+  referencia integer NOT NULL,
+  "Vendedor" text,
+  "Fecha" text DEFAULT to_char(CURRENT_DATE, 'YYYY-MM-DD'),
+  "Cantidad" numeric DEFAULT 1,
+  "Importe" numeric DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Habilitar Row Level Security (RLS)
+ALTER TABLE public."VENTAS" ENABLE ROW LEVEL SECURITY;
+
+-- Política de acceso total para anon (lectura y escritura desde la web)
+DROP POLICY IF EXISTS "Permitir todo a anon en VENTAS" ON public."VENTAS";
+CREATE POLICY "Permitir todo a anon en VENTAS" 
+ON public."VENTAS" 
+FOR ALL 
+USING (true) 
+WITH CHECK (true);
+
+-- Permisos
+GRANT ALL ON public."VENTAS" TO anon, authenticated, service_role;`;
+
+  const currentSqlText = sqlType === 'ventas' ? VENTAS_SQL : sqlType === 'articulos' ? ARTICULOS_FULL_SQL : SUPABASE_SQL_SETUP;
 
   const handleCopySql = () => {
     sound.playClick();
@@ -99,7 +128,7 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
             }}
             className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/50 transition-colors"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -107,26 +136,30 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
         </div>
 
         {/* Tab switch */}
-        <div className="px-6 pt-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+        <div className="px-6 pt-3 border-b border-slate-200 bg-slate-50/50">
+          <div className="flex gap-4 text-xs font-bold">
             <button
               onClick={() => {
                 sound.playClick();
                 setActiveTab('status');
               }}
-              className={`flex-1 py-1.5 rounded-lg transition-all ${
-                activeTab === 'status' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+              className={`pb-2.5 transition-colors border-b-2 ${
+                activeTab === 'status'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
-              Estado de Conexión
+              Estado de Sincronización
             </button>
             <button
               onClick={() => {
                 sound.playClick();
                 setActiveTab('sql');
               }}
-              className={`flex-1 py-1.5 rounded-lg transition-all ${
-                activeTab === 'sql' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+              className={`pb-2.5 transition-colors border-b-2 ${
+                activeTab === 'sql'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
               }`}
             >
               Script SQL de Tablas
@@ -189,7 +222,7 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
               {/* Data Overview Strip */}
               <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-2">
                 <span className="font-bold text-slate-800 text-xs block">Registros Locales y en la Nube</span>
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
                     <span className="text-[10px] text-slate-400 block">Vendedores</span>
                     <span className="font-bold text-slate-900 text-sm font-mono tabular-nums">{vendedoresCount}</span>
@@ -205,6 +238,10 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
                   <div className="bg-white p-2 rounded-lg border border-emerald-300 bg-emerald-50/40">
                     <span className="text-[10px] text-emerald-700 font-bold block">Artículos</span>
                     <span className="font-bold text-emerald-800 text-sm font-mono tabular-nums">{articulosCount}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-blue-300 bg-blue-50/40">
+                    <span className="text-[10px] text-blue-700 font-bold block">Ventas</span>
+                    <span className="font-bold text-blue-800 text-sm font-mono tabular-nums">{ventasCount}</span>
                   </div>
                 </div>
               </div>
@@ -252,13 +289,25 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
                   type="button"
                   onClick={() => {
                     sound.playClick();
+                    setSqlType('ventas');
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg transition-all ${
+                    sqlType === 'ventas' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600'
+                  }`}
+                >
+                  📊 Tabla VENTAS y RLS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
                     setSqlType('articulos');
                   }}
                   className={`flex-1 py-1.5 rounded-lg transition-all ${
                     sqlType === 'articulos' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600'
                   }`}
                 >
-                  📦 Tabla Artículos (+77 Datos)
+                  📦 Tabla Artículos (+77)
                 </button>
                 <button
                   type="button"
@@ -270,15 +319,17 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
                     sqlType === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600'
                   }`}
                 >
-                  🗄️ Esquema Completo (Todo)
+                  🗄️ Todo el Esquema
                 </button>
               </div>
 
               <div className="flex items-center justify-between">
                 <p className="text-slate-600">
-                  {sqlType === 'articulos'
+                  {sqlType === 'ventas'
+                    ? 'Esquema de la tabla "VENTAS" con políticas RLS para habilitar lectura y escritura pública:'
+                    : sqlType === 'articulos'
                     ? 'Copia y ejecuta este script en Supabase para crear la tabla "articulos" e insertar los 77 registros:'
-                    : 'Esquema completo con Vendedores, Clientes, Visitas y Artículos:'}
+                    : 'Esquema completo con Vendedores, Clientes, Visitas, Artículos y Ventas:'}
                 </p>
                 <button
                   type="button"

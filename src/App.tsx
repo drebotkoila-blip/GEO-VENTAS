@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SalesRep, Client, Visit, VisitOutcome, Coordinates, Article } from './types';
+import { SalesRep, Client, Visit, VisitOutcome, Coordinates, Article, Sale } from './types';
 import { INITIAL_SALES_REPS, INITIAL_CLIENTS, INITIAL_VISITS } from './data/initialData';
 import { INITIAL_ARTICLES } from './data/initialArticles';
+import { INITIAL_SALES } from './data/initialSales';
 import { MapView } from './components/MapView';
 import { LiveTrackerControls } from './components/LiveTrackerControls';
 import { RepDashboardView } from './components/RepDashboardView';
@@ -14,12 +15,14 @@ import { SupervisorDashboardView } from './components/SupervisorDashboardView';
 import { EmployeesView } from './components/EmployeesView';
 import { ClientsCrmView } from './components/ClientsCrmView';
 import { ArticlesView } from './components/ArticlesView';
+import { SalesView } from './components/SalesView';
 import { EditClientModal } from './components/EditClientModal';
 import { EditEmployeeModal } from './components/EditEmployeeModal';
 import { EditVisitModal } from './components/EditVisitModal';
 import { EditArticleModal } from './components/EditArticleModal';
 import { VisitCheckInModal } from './components/VisitCheckInModal';
 import { NewVisitModal } from './components/NewVisitModal';
+import { NewSaleModal } from './components/NewSaleModal';
 import { NewEmployeeModal } from './components/NewEmployeeModal';
 import { VisitsHistoryModal } from './components/VisitsHistoryModal';
 import { ClientDetailDrawer } from './components/ClientDetailDrawer';
@@ -40,10 +43,13 @@ import {
   mapRowToArticle,
   mapArticleToRow,
   uploadArticlesToSupabase,
+  mapRowToSale,
+  mapSaleToRow,
+  uploadSalesToSupabase,
   SupabaseSyncState,
 } from './lib/supabase';
 
-type ActiveTab = 'map' | 'rep_view' | 'calendar' | 'supervisor' | 'employees' | 'clients' | 'articles';
+type ActiveTab = 'map' | 'rep_view' | 'calendar' | 'supervisor' | 'employees' | 'clients' | 'articles' | 'sales';
 
 export default function App() {
   // Persistence with localStorage fallback and automatic corrupt-data healing
@@ -173,6 +179,21 @@ export default function App() {
     return INITIAL_ARTICLES;
   });
 
+  const [sales, setSales] = useState<Sale[]>(() => {
+    const saved = localStorage.getItem('geoventas_sales');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Error reading geoventas_sales:', err);
+      }
+    }
+    return INITIAL_SALES;
+  });
+
+  const [isNewSaleModalOpen, setIsNewSaleModalOpen] = useState<boolean>(false);
+
   // Article Editing Modal state
   const [articleToEdit, setArticleToEdit] = useState<Article | null>(null);
   const [isEditArticleModalOpen, setIsEditArticleModalOpen] = useState<boolean>(false);
@@ -193,6 +214,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('geoventas_articles', JSON.stringify(articles));
   }, [articles]);
+
+  useEffect(() => {
+    localStorage.setItem('geoventas_sales', JSON.stringify(sales));
+  }, [sales]);
 
   // SUPABASE INITIALIZATION & SYNC
   const fetchSupabaseData = async () => {
@@ -215,11 +240,23 @@ export default function App() {
         error: null,
       }));
 
-      // Try fetching vendedores, clientes, visitas, articulos
+      // Try fetching vendedores, clientes, visitas, articulos, ventas
       const { data: repsData, error: repsError } = await supabase.from('vendedores').select('*');
       const { data: clientsData } = await supabase.from('clientes').select('*');
       const { data: visitsData } = await supabase.from('visitas').select('*');
       const { data: articulosData } = await supabase.from('articulos').select('*');
+
+      // Try uppercase 'VENTAS' first, then lowercase 'ventas'
+      let ventasRows: any[] | null = null;
+      const { data: vData1, error: vErr1 } = await supabase.from('VENTAS').select('*');
+      if (!vErr1 && vData1 && vData1.length > 0) {
+        ventasRows = vData1;
+      } else {
+        const { data: vData2 } = await supabase.from('ventas').select('*');
+        if (vData2 && vData2.length > 0) {
+          ventasRows = vData2;
+        }
+      }
 
       let hasTables = false;
       if (!repsError) {
@@ -243,6 +280,11 @@ export default function App() {
       if (articulosData && articulosData.length > 0) {
         const mappedArticulos = articulosData.map(mapRowToArticle);
         setArticles(mappedArticulos);
+      }
+
+      if (ventasRows && ventasRows.length > 0) {
+        const mappedSales = ventasRows.map((r, i) => mapRowToSale(r, i));
+        setSales(mappedSales);
       }
 
       // If tables exist in Supabase but have 0 records, automatically populate them with initial data
@@ -343,6 +385,21 @@ export default function App() {
             });
           } else if (payload.eventType === 'DELETE' && payload.old) {
             setArticles((prev) => prev.filter((a) => a.referencia !== payload.old.referencia));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'VENTAS' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const newSale = mapRowToSale(payload.new);
+            setSales((prev) => {
+              if (prev.some((s) => s.id === newSale.id)) return prev;
+              return [newSale, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setSales((prev) => prev.filter((s) => s.id !== String(payload.old.id)));
           }
         }
       )
@@ -918,6 +975,85 @@ export default function App() {
     }
   };
 
+  // CREATE / SAVE SALE
+  const handleCreateSale = async (saleData: Omit<Sale, 'id'>) => {
+    const newId = `sale-${Date.now()}`;
+    const newSale: Sale = {
+      ...saleData,
+      id: newId,
+    };
+    setSales((prev) => [newSale, ...prev]);
+
+    // Push to Supabase table VENTAS
+    if (supabaseState.isConnected) {
+      try {
+        const row = mapSaleToRow(newSale);
+        const { error } = await supabase.from('VENTAS').insert([row]);
+        if (error) {
+          await supabase.from('ventas').insert([row]);
+        }
+      } catch (err) {
+        console.warn('Error saving sale to Supabase:', err);
+      }
+    }
+  };
+
+  // DELETE SINGLE SALE
+  const handleDeleteSale = async (saleIdOrIndex: string | number) => {
+    setSales((prev) => prev.filter((s, idx) => (s.id ? s.id !== saleIdOrIndex : idx !== saleIdOrIndex)));
+
+    if (supabaseState.isConnected && typeof saleIdOrIndex === 'string') {
+      try {
+        await supabase.from('VENTAS').delete().eq('id', saleIdOrIndex);
+      } catch (e) {
+        // Table might use different primary key
+      }
+    }
+  };
+
+  // DELETE MULTIPLE SALES
+  const handleDeleteMultipleSales = async (identifiers: (string | number)[]) => {
+    setSales((prev) =>
+      prev.filter((s, idx) => {
+        const key = s.id || idx;
+        return !identifiers.includes(key);
+      })
+    );
+
+    if (supabaseState.isConnected) {
+      const stringIds = identifiers.filter((id): id is string => typeof id === 'string');
+      if (stringIds.length > 0) {
+        try {
+          await supabase.from('VENTAS').delete().in('id', stringIds);
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+  };
+
+  // SYNC SALES WITH SUPABASE
+  const handleSyncSalesWithSupabase = async () => {
+    if (!supabaseState.isConnected) return;
+    const { data, error } = await supabase.from('VENTAS').select('*');
+    if (!error && data && data.length > 0) {
+      setSales(data.map((r, i) => mapRowToSale(r, i)));
+    } else {
+      const { data: dataLower, error: errLower } = await supabase.from('ventas').select('*');
+      if (!errLower && dataLower && dataLower.length > 0) {
+        setSales(dataLower.map((r, i) => mapRowToSale(r, i)));
+      } else {
+        await uploadSalesToSupabase(sales);
+      }
+    }
+  };
+
+  // SEED SALES TO SUPABASE
+  const handleSeedSalesToSupabase = async () => {
+    if (!supabaseState.isConnected) return;
+    await uploadSalesToSupabase(sales);
+  };
+
   // RESET TO DEMO DATA
   const handleResetData = () => {
     if (window.confirm('¿Restablecer datos originales del recorrido y clientes?')) {
@@ -925,9 +1061,11 @@ export default function App() {
       localStorage.removeItem('geoventas_reps');
       localStorage.removeItem('geoventas_clients');
       localStorage.removeItem('geoventas_visits');
+      localStorage.removeItem('geoventas_sales');
       setSalesReps(INITIAL_SALES_REPS);
       setClients(INITIAL_CLIENTS);
       setVisits(INITIAL_VISITS);
+      setSales(INITIAL_SALES);
       setSelectedRepId(INITIAL_SALES_REPS[0].id);
       setSelectedClientId(null);
     }
@@ -1466,6 +1604,23 @@ export default function App() {
             onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
           />
         )}
+
+        {/* VIEW 7: GESTIÓN Y PANEL DE VENTAS */}
+        {activeTab === 'sales' && (
+          <SalesView
+            sales={sales}
+            articles={articles}
+            clients={clients}
+            salesReps={salesReps}
+            onOpenNewSaleModal={() => setIsNewSaleModalOpen(true)}
+            onDeleteSale={handleDeleteSale}
+            onDeleteMultipleSales={handleDeleteMultipleSales}
+            onSyncWithSupabase={handleSyncSalesWithSupabase}
+            onSeedSalesToSupabase={handleSeedSalesToSupabase}
+            isSupabaseConnected={supabaseState.isConnected}
+            onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+          />
+        )}
       </main>
 
       {/* MODALS & DRAWERS */}
@@ -1523,6 +1678,19 @@ export default function App() {
           }}
           onCreateVisit={handleCreateVisit}
           onCreateClientAndVisit={handleCreateClientAndVisit}
+        />
+      )}
+
+      {/* 3b. New Sale Modal */}
+      {isNewSaleModalOpen && (
+        <NewSaleModal
+          isOpen={isNewSaleModalOpen}
+          onClose={() => setIsNewSaleModalOpen(false)}
+          onSaveSale={handleCreateSale}
+          clients={clients}
+          articles={articles}
+          salesReps={salesReps}
+          initialClientId={selectedClientId || undefined}
         />
       )}
 
@@ -1643,6 +1811,7 @@ export default function App() {
           clientesCount={clients.length}
           visitasCount={visits.length}
           articulosCount={articles.length}
+          ventasCount={sales.length}
         />
       )}
 

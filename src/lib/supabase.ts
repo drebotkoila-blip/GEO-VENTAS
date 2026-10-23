@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { SalesRep, Client, Visit, Article } from '../types';
+import { SalesRep, Client, Visit, Article, Sale } from '../types';
 import { safeCoords, resolveClientCoords } from '../utils/geoUtils';
 
 // Strip any trailing /rest/v1 or trailing slash to get the valid base Supabase URL
@@ -266,6 +266,56 @@ export async function uploadArticlesToSupabase(articles: Article[]): Promise<{ c
       return { count: 0, error };
     }
     return { count: rows.length, error: null };
+  } catch (err: any) {
+    return { count: 0, error: err };
+  }
+}
+
+/**
+ * Mapping functions for Ventas
+ */
+export function mapRowToSale(row: any, index: number = 0): Sale {
+  return {
+    id: row.id ? String(row.id) : `sale-${row.id_cliente || 'c'}-${row.referencia || 'r'}-${row.Fecha || 'f'}-${index}`,
+    cliente: row.cliente || row.Cliente || '',
+    idCliente: String(row.id_cliente || row.IdCliente || row.cliente_id || ''),
+    referencia: Number(row.referencia || row.Referencia) || 0,
+    vendedor: row.Vendedor || row.vendedor || '',
+    fecha: row.Fecha || row.fecha || new Date().toISOString().split('T')[0],
+    cantidad: Number(row.Cantidad || row.cantidad) || 0,
+    importe: Number(row.Importe || row.importe) || 0,
+  };
+}
+
+export function mapSaleToRow(s: Sale): any {
+  return {
+    cliente: s.cliente,
+    id_cliente: s.idCliente,
+    referencia: s.referencia,
+    Vendedor: s.vendedor,
+    Fecha: s.fecha,
+    Cantidad: s.cantidad,
+    Importe: s.importe,
+  };
+}
+
+/**
+ * Upload sales to Supabase table VENTAS
+ */
+export async function uploadSalesToSupabase(sales: Sale[]): Promise<{ count: number; error: any }> {
+  try {
+    const rows = sales.map(mapSaleToRow);
+    // Try uppercase 'VENTAS' first
+    const { error: err1 } = await supabase.from('VENTAS').insert(rows);
+    if (!err1) {
+      return { count: rows.length, error: null };
+    }
+    // Fallback to lowercase 'ventas'
+    const { error: err2 } = await supabase.from('ventas').insert(rows);
+    if (!err2) {
+      return { count: rows.length, error: null };
+    }
+    return { count: 0, error: err1 || err2 };
   } catch (err: any) {
     return { count: 0, error: err };
   }
