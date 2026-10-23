@@ -93,3 +93,15 @@ export interface GeolocationState {
   isTracking: boolean;
   isSimulated: boolean;
 }
+
+export interface Article {
+  referencia: number;
+  proveedor: string;
+  producto: string;
+  familia: string;
+  stock: number;
+  precioCoste: number;
+  stockMin: number;
+  fechaInvent: string;
+}
+

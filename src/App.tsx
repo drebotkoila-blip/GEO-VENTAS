@@ -4,17 +4,20 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SalesRep, Client, Visit, VisitOutcome, Coordinates } from './types';
+import { SalesRep, Client, Visit, VisitOutcome, Coordinates, Article } from './types';
 import { INITIAL_SALES_REPS, INITIAL_CLIENTS, INITIAL_VISITS } from './data/initialData';
+import { INITIAL_ARTICLES } from './data/initialArticles';
 import { MapView } from './components/MapView';
 import { LiveTrackerControls } from './components/LiveTrackerControls';
 import { RepDashboardView } from './components/RepDashboardView';
 import { SupervisorDashboardView } from './components/SupervisorDashboardView';
 import { EmployeesView } from './components/EmployeesView';
 import { ClientsCrmView } from './components/ClientsCrmView';
+import { ArticlesView } from './components/ArticlesView';
 import { EditClientModal } from './components/EditClientModal';
 import { EditEmployeeModal } from './components/EditEmployeeModal';
 import { EditVisitModal } from './components/EditVisitModal';
+import { EditArticleModal } from './components/EditArticleModal';
 import { VisitCheckInModal } from './components/VisitCheckInModal';
 import { NewVisitModal } from './components/NewVisitModal';
 import { NewEmployeeModal } from './components/NewEmployeeModal';
@@ -34,10 +37,13 @@ import {
   mapClientToRow,
   mapRowToVisit,
   mapVisitToRow,
+  mapRowToArticle,
+  mapArticleToRow,
+  uploadArticlesToSupabase,
   SupabaseSyncState,
 } from './lib/supabase';
 
-type ActiveTab = 'map' | 'rep_view' | 'calendar' | 'supervisor' | 'employees' | 'clients';
+type ActiveTab = 'map' | 'rep_view' | 'calendar' | 'supervisor' | 'employees' | 'clients' | 'articles';
 
 export default function App() {
   // Persistence with localStorage fallback and automatic corrupt-data healing
@@ -154,6 +160,23 @@ export default function App() {
   const simulationIntervalRef = useRef<number | null>(null);
   const simStepRef = useRef<number>(0);
 
+  const [articles, setArticles] = useState<Article[]>(() => {
+    const saved = localStorage.getItem('geoventas_articles');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.warn('Error reading geoventas_articles:', err);
+      }
+    }
+    return INITIAL_ARTICLES;
+  });
+
+  // Article Editing Modal state
+  const [articleToEdit, setArticleToEdit] = useState<Article | null>(null);
+  const [isEditArticleModalOpen, setIsEditArticleModalOpen] = useState<boolean>(false);
+
   // Save to localStorage as local cache
   useEffect(() => {
     localStorage.setItem('geoventas_reps', JSON.stringify(salesReps));
@@ -166,6 +189,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('geoventas_visits', JSON.stringify(visits));
   }, [visits]);
+
+  useEffect(() => {
+    localStorage.setItem('geoventas_articles', JSON.stringify(articles));
+  }, [articles]);
 
   // SUPABASE INITIALIZATION & SYNC
   const fetchSupabaseData = async () => {
@@ -188,10 +215,11 @@ export default function App() {
         error: null,
       }));
 
-      // Try fetching vendedores
+      // Try fetching vendedores, clientes, visitas, articulos
       const { data: repsData, error: repsError } = await supabase.from('vendedores').select('*');
       const { data: clientsData } = await supabase.from('clientes').select('*');
       const { data: visitsData } = await supabase.from('visitas').select('*');
+      const { data: articulosData } = await supabase.from('articulos').select('*');
 
       let hasTables = false;
       if (!repsError) {
@@ -210,6 +238,11 @@ export default function App() {
       if (visitsData && visitsData.length > 0) {
         const mappedVisits = visitsData.map(mapRowToVisit);
         setVisits(mappedVisits);
+      }
+
+      if (articulosData && articulosData.length > 0) {
+        const mappedArticulos = articulosData.map(mapRowToArticle);
+        setArticles(mappedArticulos);
       }
 
       // If tables exist in Supabase but have 0 records, automatically populate them with initial data
@@ -293,6 +326,26 @@ export default function App() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'articulos' },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const updatedArt = mapRowToArticle(payload.new);
+            setArticles((prev) =>
+              prev.map((a) => (a.referencia === updatedArt.referencia ? updatedArt : a))
+            );
+          } else if (payload.eventType === 'INSERT' && payload.new) {
+            const newArt = mapRowToArticle(payload.new);
+            setArticles((prev) => {
+              if (prev.some((a) => a.referencia === newArt.referencia)) return prev;
+              return [newArt, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setArticles((prev) => prev.filter((a) => a.referencia !== payload.old.referencia));
+          }
+        }
+      )
       .subscribe();
 
     return () => {
@@ -311,6 +364,7 @@ export default function App() {
     for (const visit of visits) {
       await supabase.from('visitas').upsert(mapVisitToRow(visit));
     }
+    await uploadArticlesToSupabase(articles);
     await fetchSupabaseData();
   };
 
@@ -817,6 +871,53 @@ export default function App() {
     }
   };
 
+  // SAVE / EDIT ARTICLE
+  const handleSaveArticle = (articleData: Article) => {
+    setArticles((prev) => {
+      const exists = prev.some((a) => a.referencia === articleData.referencia);
+      if (exists) {
+        return prev.map((a) => (a.referencia === articleData.referencia ? articleData : a));
+      }
+      return [articleData, ...prev];
+    });
+
+    if (supabaseState.isConnected) {
+      supabase.from('articulos').upsert(mapArticleToRow(articleData)).then(() => {});
+    }
+
+    setIsEditArticleModalOpen(false);
+    setArticleToEdit(null);
+  };
+
+  // DELETE SINGLE ARTICLE
+  const handleDeleteArticle = (ref: number) => {
+    setArticles((prev) => prev.filter((a) => a.referencia !== ref));
+
+    if (supabaseState.isConnected) {
+      supabase.from('articulos').delete().eq('referencia', ref).then(() => {});
+    }
+  };
+
+  // DELETE MULTIPLE ARTICLES
+  const handleDeleteMultipleArticles = (refs: number[]) => {
+    setArticles((prev) => prev.filter((a) => !refs.includes(a.referencia)));
+
+    if (supabaseState.isConnected) {
+      supabase.from('articulos').delete().in('referencia', refs).then(() => {});
+    }
+  };
+
+  // SYNC ARTICLES WITH SUPABASE
+  const handleSyncArticlesWithSupabase = async () => {
+    if (!supabaseState.isConnected) return;
+    const { data, error } = await supabase.from('articulos').select('*');
+    if (!error && data && data.length > 0) {
+      setArticles(data.map(mapRowToArticle));
+    } else {
+      await uploadArticlesToSupabase(articles);
+    }
+  };
+
   // RESET TO DEMO DATA
   const handleResetData = () => {
     if (window.confirm('¿Restablecer datos originales del recorrido y clientes?')) {
@@ -938,6 +1039,20 @@ export default function App() {
           <button
             onClick={() => {
               sound.playClick();
+              setActiveTab('articles');
+            }}
+            className={`transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'articles' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
+            }`}
+          >
+            <span>Artículos</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              {articles.length}
+            </span>
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
               setIsHistoryOpen(true);
             }}
             className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0"
@@ -1022,6 +1137,15 @@ export default function App() {
             className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'clients' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
           >
             CRM
+          </button>
+          <button
+            onClick={() => {
+              sound.playClick();
+              setActiveTab('articles');
+            }}
+            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'articles' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
+          >
+            Artículos
           </button>
         </div>
 
@@ -1322,6 +1446,26 @@ export default function App() {
             onViewClientDrawer={handleSelectClient}
           />
         )}
+
+        {/* VIEW 6: CATÁLOGO DE ARTÍCULOS */}
+        {activeTab === 'articles' && (
+          <ArticlesView
+            articles={articles}
+            onOpenNewArticleModal={() => {
+              setArticleToEdit(null);
+              setIsEditArticleModalOpen(true);
+            }}
+            onEditArticle={(art) => {
+              setArticleToEdit(art);
+              setIsEditArticleModalOpen(true);
+            }}
+            onDeleteArticle={handleDeleteArticle}
+            onDeleteMultipleArticles={handleDeleteMultipleArticles}
+            onSyncWithSupabase={handleSyncArticlesWithSupabase}
+            isSupabaseConnected={supabaseState.isConnected}
+            onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+          />
+        )}
       </main>
 
       {/* MODALS & DRAWERS */}
@@ -1433,7 +1577,20 @@ export default function App() {
         />
       )}
 
-      {/* 6. History & Audit Modal */}
+      {/* 6. Edit or Create Article Modal */}
+      {isEditArticleModalOpen && (
+        <EditArticleModal
+          article={articleToEdit}
+          existingReferences={articles.map((a) => a.referencia)}
+          onClose={() => {
+            setIsEditArticleModalOpen(false);
+            setArticleToEdit(null);
+          }}
+          onSave={handleSaveArticle}
+        />
+      )}
+
+      {/* 7. History & Audit Modal */}
       {isHistoryOpen && (
         <VisitsHistoryModal
           visits={visits}
@@ -1449,7 +1606,7 @@ export default function App() {
         />
       )}
 
-      {/* 7. Edit Sales Rep (Vendedor) Modal */}
+      {/* 8. Edit Sales Rep (Vendedor) Modal */}
       {isEditEmployeeModalOpen && employeeToEdit && (
         <EditEmployeeModal
           rep={employeeToEdit}
@@ -1461,7 +1618,7 @@ export default function App() {
         />
       )}
 
-      {/* 8. Edit Visit Modal */}
+      {/* 9. Edit Visit Modal */}
       {isEditVisitModalOpen && visitToEdit && (
         <EditVisitModal
           visit={visitToEdit}
@@ -1475,7 +1632,7 @@ export default function App() {
         />
       )}
 
-      {/* 7. Supabase Sync Modal */}
+      {/* 10. Supabase Sync Modal */}
       {isSupabaseModalOpen && (
         <SupabaseSyncModal
           syncState={supabaseState}
@@ -1485,6 +1642,7 @@ export default function App() {
           vendedoresCount={salesReps.length}
           clientesCount={clients.length}
           visitasCount={visits.length}
+          articulosCount={articles.length}
         />
       )}
 

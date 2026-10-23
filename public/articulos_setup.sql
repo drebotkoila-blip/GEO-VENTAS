@@ -1,0 +1,119 @@
+-- =====================================================
+-- TABLA DE ARTÍCULOS PARA SUPABASE CON 77 REGISTROS
+-- Ejecutar en el SQL Editor de tu proyecto Supabase:
+-- https://supabase.com/dashboard/project/jeuqkaidbikwbdquhkaa/sql
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS public.articulos (
+    referencia INTEGER PRIMARY KEY,
+    proveedor TEXT NOT NULL,
+    producto TEXT NOT NULL,
+    familia TEXT NOT NULL,
+    stock INTEGER NOT NULL DEFAULT 0,
+    precio_coste NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    stock_min INTEGER NOT NULL DEFAULT 0,
+    fecha_invent TEXT DEFAULT '31/12/2025',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Habilitar Seguridad por Fila (RLS) y permitir lectura/escritura pública
+ALTER TABLE public.articulos ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'articulos' AND policyname = 'Permitir todo a anon en articulos'
+    ) THEN
+        CREATE POLICY "Permitir todo a anon en articulos" ON public.articulos FOR ALL USING (true) WITH CHECK (true);
+    END IF;
+END $$;
+
+-- Inserción / Actualización de los 77 artículos con todos los datos
+INSERT INTO public.articulos (referencia, proveedor, producto, familia, stock, precio_coste, stock_min, fecha_invent)
+VALUES
+  (1, 'Grandma Kelly''s Homestead', 'Mermelada de grosellas de la abuela', 'Condimentos', 15, 31.68, 20, '31/12/2025'),
+  (2, 'Mayumi''s', 'Cuajada de judías', 'Frutas/Verduras', 15, 26.11, 20, '31/12/2025'),
+  (3, 'Specialty Biscuits, Ltd.', 'Pastas de té de chocolate', 'Repostería', 15, 10.33, 20, '31/12/2025'),
+  (4, 'Pavlova, Ltd.', 'Postre de merengue Pavlova', 'Repostería', 15, 19.6, 20, '31/12/2025'),
+  (5, 'Exotic Liquids', 'Cerveza tibetana Barley', 'Bebidas', 15, 21.34, 20, '31/12/2025'),
+  (6, 'Aux joyeux ecclésiastiques', 'Licor verde Chartreuse', 'Bebidas', 25, 20.22, 20, '31/12/2025'),
+  (7, 'Plutzer Lebensmittelgroßmärkte AG', 'Cerveza Klosterbier Rhönbräu', 'Bebidas', 25, 8.7, 20, '31/12/2025'),
+  (8, 'Ma Maison', 'Paté chino', 'Carnes', 25, 26.96, 20, '31/12/2025'),
+  (9, 'Grandma Kelly''s Homestead', 'Salsa de arándanos Northwoods', 'Condimentos', 25, 44.93, 20, '31/12/2025'),
+  (10, 'Exotic Liquids', 'Sirope de regaliz', 'Condimentos', 25, 11.23, 20, '31/12/2025'),
+  (11, 'Plutzer Lebensmittelgroßmärkte AG', 'Salsa verde original Frankfurter', 'Condimentos', 25, 14.6, 20, '31/12/2025'),
+  (12, 'New Orleans Cajun Delights', 'Especias Cajun del chef Anton', 'Condimentos', 25, 24.71, 20, '31/12/2025'),
+  (13, 'New Orleans Cajun Delights', 'Especias picantes de Luisiana', 'Condimentos', 25, 19.09, 20, '31/12/2025'),
+  (14, 'Grandma Kelly''s Homestead', 'Peras secas orgánicas del tío Bob', 'Frutas/Verduras', 25, 33.7, 20, '31/12/2025'),
+  (15, 'Plutzer Lebensmittelgroßmärkte AG', 'Bollos de pan de Wimmer', 'Granos/Cereales', 16, 37.35, 20, '31/12/2025'),
+  (16, 'PB Knäckebröd AB', 'Pan fino', 'Granos/Cereales', 16, 10.11, 20, '31/12/2025'),
+  (17, 'G''day, Mate', 'Cereales para Filo', 'Granos/Cereales', 16, 7.86, 20, '31/12/2025'),
+  (18, 'Cooperativa de Quesos ''Las Cabras''', 'Queso Manchego La Pastora', 'Lácteos', 16, 42.68, 20, '31/12/2025'),
+  (19, 'Gai pâturage', 'Camembert Pierrot', 'Lácteos', 16, 38.19, 20, '31/12/2025'),
+  (20, 'Formaggi Fortini s.r.l.', 'Queso Mascarpone Fabioli', 'Lácteos', 16, 35.94, 20, '31/12/2025'),
+  (21, 'Lyngbysild', 'Arenque salado', 'Pescado/Marisco', 25, 13.48, 20, '31/12/2025'),
+  (22, 'Tokyo Traders', 'Pez espada', 'Pescado/Marisco', 25, 34.82, 20, '31/12/2025'),
+  (23, 'Svensk Sjöföda AB', 'Caviar rojo', 'Pescado/Marisco', 25, 16.85, 20, '31/12/2025'),
+  (24, 'New England Seafood Cannery', 'Crema de almejas estilo Nueva Inglaterra', 'Pescado/Marisco', 25, 10.84, 20, '31/12/2025'),
+  (25, 'Mayumi''s', 'Algas Konbu', 'Pescado/Marisco', 25, 6.74, 20, '31/12/2025'),
+  (26, 'Specialty Biscuits, Ltd.', 'Mermelada de Sir Rodney''s', 'Repostería', 25, 90.98, 20, '31/12/2025'),
+  (27, 'Karkki Oy', 'Licor Cloudberry', 'Bebidas', 25, 20.22, 20, '31/12/2025'),
+  (28, 'Karkki Oy', 'Chocolate blanco', 'Repostería', 25, 28.25, 20, '31/12/2025'),
+  (29, 'Exotic Liquids', 'Té Dharamsala', 'Bebidas', 25, 20.22, 20, '31/12/2025'),
+  (30, 'Formaggi Fortini s.r.l.', 'Queso gorgonzola Telino', 'Lácteos', 17, 14.04, 20, '31/12/2025'),
+  (31, 'Refrescos Americanas LTDA', 'Refresco Guaraná Fantástica', 'Bebidas', 17, 5.05, 20, '31/12/2025'),
+  (32, 'Cooperativa de Quesos ''Las Cabras''', 'Queso Cabrales', 'Lácteos', 17, 23.59, 20, '31/12/2025'),
+  (33, 'Leka Trading', 'Café de Malasia', 'Bebidas', 17, 51.67, 20, '31/12/2025'),
+  (34, 'Plutzer Lebensmittelgroßmärkte AG', 'Col fermentada Rössle', 'Frutas/Verduras', 17, 51.22, 20, '31/12/2025'),
+  (35, 'Bigfoot Breweries', 'Cerveza Sasquatch', 'Bebidas', 17, 15.72, 20, '31/12/2025'),
+  (36, 'Pavlova, Ltd.', 'Cordero Alice Springs', 'Carnes', 25, 43.8, 20, '31/12/2025'),
+  (37, 'G''day, Mate', 'Empanada de carne', 'Carnes', 25, 36.84, 20, '31/12/2025'),
+  (38, 'Specialty Biscuits, Ltd.', 'Barras de pan de Escocia', 'Repostería', 25, 14.04, 20, '31/12/2025'),
+  (39, 'Ma Maison', 'Empanada de cerdo', 'Carnes', 25, 8.37, 20, '31/12/2025'),
+  (40, 'Nord-Ost-Fisch Handelsgesellschaft mbH', 'Arenque blanco del noroeste', 'Pescado/Marisco', 25, 29.08, 20, '31/12/2025'),
+  (41, 'Pavlova, Ltd.', 'Cerveza Outback', 'Bebidas', 25, 16.85, 20, '31/12/2025'),
+  (42, 'New England Seafood Cannery', 'Carne de cangrejo de Boston', 'Pescado/Marisco', 0, 20.67, 20, '31/12/2025'),
+  (43, 'Forêts d''érables', 'Sirope de arce', 'Condimentos', 0, 32.01, 20, '31/12/2025'),
+  (44, 'Specialty Biscuits, Ltd.', 'Bollos de Sir Rodney''s', 'Repostería', 0, 11.23, 20, '31/12/2025'),
+  (45, 'G''day, Mate', 'Manzanas secas Manjimup', 'Frutas/Verduras', 0, 59.53, 20, '31/12/2025'),
+  (46, 'Pasta Buttini s.r.l.', 'Raviolis Angelo', 'Granos/Cereales', 0, 21.9, 20, '31/12/2025'),
+  (47, 'Heli Süßwaren GmbH & Co. KG', 'Crema de chocolate y nueces NuNuCa', 'Repostería', 25, 15.72, 20, '31/12/2025'),
+  (48, 'Bigfoot Breweries', 'Cerveza Laughing Lumberjack', 'Bebidas', 25, 15.72, 20, '31/12/2025'),
+  (49, 'Norske Meierier', 'Queso de cabra', 'Lácteos', 25, 2.81, 20, '31/12/2025'),
+  (50, 'Pavlova, Ltd.', 'Langostinos tigre Carnarvon', 'Pescado/Marisco', 25, 70.2, 20, '31/12/2025'),
+  (51, 'New Orleans Cajun Delights', 'Mezcla Gumbo del chef Anton', 'Condimentos', 25, 23.98, 20, '31/12/2025'),
+  (52, 'Forêts d''érables', 'Tarta de azúcar', 'Repostería', 25, 55.37, 20, '31/12/2025'),
+  (53, 'Bigfoot Breweries', 'Cerveza negra Steeleye', 'Bebidas', 25, 20.22, 20, '31/12/2025'),
+  (54, 'Pavlova, Ltd.', 'Sandwich de vegetales', 'Condimentos', 25, 49.31, 20, '31/12/2025'),
+  (55, 'Leka Trading', 'Azúcar negra Malacca', 'Condimentos', 25, 21.85, 20, '31/12/2025'),
+  (56, 'Norske Meierier', 'Crema de queso Fløtemys', 'Lácteos', 25, 24.15, 20, '31/12/2025'),
+  (57, 'Karkki Oy', 'Regaliz', 'Repostería', 25, 22.46, 20, '31/12/2025'),
+  (58, 'Leka Trading', 'Tallarines de Singapur', 'Granos/Cereales', 25, 15.72, 20, '31/12/2025'),
+  (59, 'Gai pâturage', 'Raclet de queso Courdavault', 'Lácteos', 25, 61.78, 20, '31/12/2025'),
+  (60, 'Plutzer Lebensmittelgroßmärkte AG', 'Salchicha Thüringer', 'Carnes', 0, 139.04, 20, '31/12/2025'),
+  (61, 'Norske Meierier', 'Queso Gudbrandsdals', 'Lácteos', 0, 40.44, 20, '31/12/2025'),
+  (62, 'Aux joyeux ecclésiastiques', 'Vino Côte de Blaye', 'Bebidas', 0, 295.96, 20, '31/12/2025'),
+  (63, 'Svensk Sjöföda AB', 'Escabeche de arenque', 'Pescado/Marisco', 0, 21.34, 20, '31/12/2025'),
+  (64, 'Pasta Buttini s.r.l.', 'Gnocchi de la abuela Alicia', 'Granos/Cereales', 0, 42.68, 20, '31/12/2025'),
+  (65, 'New Orleans Cajun Delights', 'Salsa de pimiento picante de Luisiana', 'Condimentos', 25, 23.64, 20, '31/12/2025'),
+  (66, 'Heli Süßwaren GmbH & Co. KG', 'Ositos de goma Gumbär', 'Repostería', 25, 35.08, 20, '31/12/2025'),
+  (67, 'Formaggi Fortini s.r.l.', 'Queso Mozzarella Giovanni', 'Lácteos', 25, 39.09, 20, '31/12/2025'),
+  (68, 'Escargots Nouveaux', 'Caracoles de Borgoña', 'Pescado/Marisco', 25, 14.88, 20, '31/12/2025'),
+  (69, 'Lyngbysild', 'Arenque ahumado', 'Pescado/Marisco', 25, 10.67, 20, '31/12/2025'),
+  (70, 'PB Knäckebröd AB', 'Pan de centeno crujiente estilo Gustaf''s', 'Granos/Cereales', 3, 23.59, 20, '31/12/2025'),
+  (71, 'Tokyo Traders', 'Queso de soja Longlife', 'Frutas/Verduras', 3, 11.23, 20, '31/12/2025'),
+  (72, 'Heli Süßwaren GmbH & Co. KG', 'Chocolate Schoggi', 'Repostería', 3, 49.31, 20, '31/12/2025'),
+  (73, 'Zaanse Snoepfabriek', 'Galletas Zaanse', 'Repostería', 3, 10.67, 20, '31/12/2025'),
+  (74, 'Svensk Sjöföda AB', 'Salmón ahumado Gravad', 'Pescado/Marisco', 25, 29.2, 20, '31/12/2025'),
+  (75, 'Tokyo Traders', 'Buey Mishi Kobe', 'Carnes', 25, 108.95, 20, '31/12/2025'),
+  (76, 'Zaanse Snoepfabriek', 'Chocolate holandés', 'Repostería', 25, 14.32, 20, '31/12/2025'),
+  (77, 'Mayumi''s', 'Salsa de soja baja en sodio', 'Condimentos', 25, 17.41, 20, '31/12/2025')
+ON CONFLICT (referencia) DO UPDATE SET
+    proveedor = EXCLUDED.proveedor,
+    producto = EXCLUDED.producto,
+    familia = EXCLUDED.familia,
+    stock = EXCLUDED.stock,
+    precio_coste = EXCLUDED.precio_coste,
+    stock_min = EXCLUDED.stock_min,
+    fecha_invent = EXCLUDED.fecha_invent;

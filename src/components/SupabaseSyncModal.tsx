@@ -3,6 +3,7 @@ import {
   SUPABASE_URL,
   SUPABASE_KEY,
   SUPABASE_SQL_SETUP,
+  ARTICULOS_FULL_SQL,
   SupabaseSyncState,
 } from '../lib/supabase';
 import { sound } from '../utils/audioFeedback';
@@ -15,6 +16,7 @@ interface SupabaseSyncModalProps {
   vendedoresCount: number;
   clientesCount: number;
   visitasCount: number;
+  articulosCount?: number;
 }
 
 export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
@@ -25,15 +27,19 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
   vendedoresCount,
   clientesCount,
   visitasCount,
+  articulosCount = 77,
 }) => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql'>('status');
+  const [sqlType, setSqlType] = useState<'all' | 'articulos'>('articulos');
   const [isSyncing, setIsSyncing] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
+  const currentSqlText = sqlType === 'articulos' ? ARTICULOS_FULL_SQL : SUPABASE_SQL_SETUP;
+
   const handleCopySql = () => {
     sound.playClick();
-    navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
+    navigator.clipboard.writeText(currentSqlText);
     setCopiedSql(true);
     setTimeout(() => setCopiedSql(false), 2500);
   };
@@ -183,7 +189,7 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
               {/* Data Overview Strip */}
               <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 space-y-2">
                 <span className="font-bold text-slate-800 text-xs block">Registros Locales y en la Nube</span>
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-4 gap-2 text-center">
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
                     <span className="text-[10px] text-slate-400 block">Vendedores</span>
                     <span className="font-bold text-slate-900 text-sm font-mono tabular-nums">{vendedoresCount}</span>
@@ -195,6 +201,10 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
                     <span className="text-[10px] text-slate-400 block">Visitas</span>
                     <span className="font-bold text-slate-900 text-sm font-mono tabular-nums">{visitasCount}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-emerald-300 bg-emerald-50/40">
+                    <span className="text-[10px] text-emerald-700 font-bold block">Artículos</span>
+                    <span className="font-bold text-emerald-800 text-sm font-mono tabular-nums">{articulosCount}</span>
                   </div>
                 </div>
               </div>
@@ -228,22 +238,52 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
                   onClick={handleSeed}
                   disabled={isSyncing}
                   className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5"
-                  title="Sube los datos iniciales de vendedores y clientes a tu base de datos Supabase"
+                  title="Sube los datos iniciales de vendedores, clientes y artículos a tu base de datos Supabase"
                 >
-                  <span>Subir Datos Iniciales a Supabase</span>
+                  <span>Subir Datos a Supabase</span>
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-3 text-xs">
+              {/* SQL sub-selector */}
+              <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setSqlType('articulos');
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg transition-all ${
+                    sqlType === 'articulos' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600'
+                  }`}
+                >
+                  📦 Tabla Artículos (+77 Datos)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setSqlType('all');
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg transition-all ${
+                    sqlType === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600'
+                  }`}
+                >
+                  🗄️ Esquema Completo (Todo)
+                </button>
+              </div>
+
               <div className="flex items-center justify-between">
                 <p className="text-slate-600">
-                  Si tu proyecto de Supabase es nuevo, ejecuta este script en el <strong>SQL Editor</strong> de Supabase para crear las tablas necesarias:
+                  {sqlType === 'articulos'
+                    ? 'Copia y ejecuta este script en Supabase para crear la tabla "articulos" e insertar los 77 registros:'
+                    : 'Esquema completo con Vendedores, Clientes, Visitas y Artículos:'}
                 </p>
                 <button
                   type="button"
                   onClick={handleCopySql}
-                  className="px-3 py-1 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1.5 shrink-0"
+                  className="px-3.5 py-1.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800 transition-colors flex items-center gap-1.5 shrink-0"
                 >
                   <span>{copiedSql ? '✓ Copiado' : 'Copiar SQL'}</span>
                 </button>
@@ -251,16 +291,16 @@ export const SupabaseSyncModal: React.FC<SupabaseSyncModalProps> = ({
 
               <div className="relative">
                 <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl overflow-x-auto text-[11px] font-mono max-h-60 leading-relaxed">
-                  {SUPABASE_SQL_SETUP}
+                  {currentSqlText}
                 </pre>
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 space-y-1 text-[11px]">
                 <strong className="block font-semibold">Instrucciones rápidas en Supabase:</strong>
                 <ol className="list-decimal pl-4 space-y-0.5">
-                  <li>Abre tu consola de Supabase (<a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline font-bold">dashboard</a>).</li>
-                  <li>Ve a la pestaña <strong>SQL Editor</strong> en la barra lateral izquierda.</li>
-                  <li>Haz clic en <strong>New Query</strong>, pega este script y pulsa <strong>Run</strong>.</li>
+                  <li>Abre tu consola de Supabase (<a href="https://supabase.com/dashboard/project/jeuqkaidbikwbdquhkaa/sql" target="_blank" rel="noreferrer" className="underline font-bold">SQL Editor</a>).</li>
+                  <li>Haz clic en <strong>New Query</strong>, pega el script copiado y pulsa <strong>Run</strong>.</li>
+                  <li>¡Listo! La tabla quedará creada con todos los datos e índices.</li>
                 </ol>
               </div>
             </div>

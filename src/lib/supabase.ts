@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { SalesRep, Client, Visit } from '../types';
+import { SalesRep, Client, Visit, Article } from '../types';
 import { safeCoords, resolveClientCoords } from '../utils/geoUtils';
 
 // Strip any trailing /rest/v1 or trailing slash to get the valid base Supabase URL
@@ -23,6 +23,8 @@ export interface SupabaseSyncState {
   hasTables: boolean;
   error: string | null;
 }
+
+export { ARTICULOS_FULL_SQL } from '../data/articulosSql';
 
 /**
  * Health check to verify connection to the Supabase endpoint
@@ -225,10 +227,55 @@ export function mapVisitToRow(v: Visit): any {
 }
 
 /**
+ * Mapping functions for Artículos
+ */
+export function mapRowToArticle(row: any): Article {
+  return {
+    referencia: Number(row.referencia),
+    proveedor: row.proveedor || '',
+    producto: row.producto || '',
+    familia: row.familia || '',
+    stock: Number(row.stock) || 0,
+    precioCoste: Number(row.precio_coste) || 0,
+    stockMin: Number(row.stock_min) || 0,
+    fechaInvent: row.fecha_invent || '31/12/2025',
+  };
+}
+
+export function mapArticleToRow(a: Article): any {
+  return {
+    referencia: a.referencia,
+    proveedor: a.proveedor,
+    producto: a.producto,
+    familia: a.familia,
+    stock: a.stock,
+    precio_coste: a.precioCoste,
+    stock_min: a.stockMin,
+    fecha_invent: a.fechaInvent,
+  };
+}
+
+/**
+ * Upload all articles to Supabase in batches of 50
+ */
+export async function uploadArticlesToSupabase(articles: Article[]): Promise<{ count: number; error: any }> {
+  try {
+    const rows = articles.map(mapArticleToRow);
+    const { data, error } = await supabase.from('articulos').upsert(rows, { onConflict: 'referencia' });
+    if (error) {
+      return { count: 0, error };
+    }
+    return { count: rows.length, error: null };
+  } catch (err: any) {
+    return { count: 0, error: err };
+  }
+}
+
+/**
  * SQL Schema for Supabase SQL Editor if user wishes to run it
  */
 export const SUPABASE_SQL_SETUP = `-- Script de creación de tablas para GeoVentas en Supabase
--- Ejecutar en el SQL Editor de tu proyecto Supabase
+-- Ejecutar en el SQL Editor de tu proyecto Supabase: https://supabase.com/dashboard/project/jeuqkaidbikwbdquhkaa/sql
 
 -- 1. Tabla de Vendedores
 CREATE TABLE IF NOT EXISTS public.vendedores (
@@ -297,12 +344,28 @@ CREATE TABLE IF NOT EXISTS public.visitas (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 4. Tabla de Artículos (Catálogo de Productos)
+CREATE TABLE IF NOT EXISTS public.articulos (
+    referencia INTEGER PRIMARY KEY,
+    proveedor TEXT NOT NULL,
+    producto TEXT NOT NULL,
+    familia TEXT NOT NULL,
+    stock INTEGER NOT NULL DEFAULT 0,
+    precio_coste NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    stock_min INTEGER NOT NULL DEFAULT 0,
+    fecha_invent TEXT DEFAULT '31/12/2025',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Habilitar permisos de lectura y escritura para la publishable/anon key
 ALTER TABLE public.vendedores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.visitas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.articulos ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Permitir todo a anon en vendedores" ON public.vendedores FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir todo a anon en clientes" ON public.clientes FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir todo a anon en visitas" ON public.visitas FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo a anon en articulos" ON public.articulos FOR ALL USING (true) WITH CHECK (true);
 `;
+
