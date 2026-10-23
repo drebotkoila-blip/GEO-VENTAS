@@ -11,6 +11,7 @@ interface DayVisitsModalProps {
   onNewVisitForDate: (dateString: string) => void;
   onEditVisit: (visit: Visit) => void;
   onDeleteVisit: (visitId: string) => void;
+  onMoveVisit?: (visitId: string, newDateString: string) => void;
   onOpenCheckInModal: (visit: Visit) => void;
   onSelectClientAndGoToMap: (clientId: string) => void;
 }
@@ -24,9 +25,12 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
   onNewVisitForDate,
   onEditVisit,
   onDeleteVisit,
+  onMoveVisit,
   onOpenCheckInModal,
   onSelectClientAndGoToMap,
 }) => {
+  const [movingVisitId, setMovingVisitId] = React.useState<string | null>(null);
+  const [selectedTargetDate, setSelectedTargetDate] = React.useState<string>(dateString);
   // Format Date in Spanish: e.g. "Jueves, 22 de Octubre de 2026"
   const formattedDate = (() => {
     try {
@@ -159,11 +163,20 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
               return (
                 <div
                   key={visit.id}
+                  draggable={true}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', visit.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    sound.playClick();
+                  }}
                   className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs hover:shadow-sm transition-all"
                 >
                   {/* Top line: Time, Rep, Status */}
                   <div className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-2.5">
                     <div className="flex items-center gap-2.5">
+                      <span className="cursor-grab text-slate-400 font-mono text-xs select-none" title="Arrastra para mover">
+                        ⋮⋮
+                      </span>
                       <span className="font-mono text-xs font-black px-2 py-0.5 bg-slate-900 text-white rounded-md tracking-wider">
                         {visit.scheduledTime || '09:00'}
                       </span>
@@ -249,6 +262,43 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Inline Date Mover Form if active */}
+                  {movingVisitId === visit.id && (
+                    <div className="mt-3 p-3 bg-blue-50/80 rounded-xl border border-blue-200 flex items-center justify-between gap-3 text-xs flex-wrap animate-in fade-in duration-150">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-blue-900">Mover a nueva fecha:</span>
+                        <input
+                          type="date"
+                          value={selectedTargetDate}
+                          onChange={(e) => setSelectedTargetDate(e.target.value)}
+                          className="bg-white border border-blue-300 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onMoveVisit && selectedTargetDate && selectedTargetDate !== dateString) {
+                              onMoveVisit(visit.id, selectedTargetDate);
+                              sound.playSuccess();
+                              setMovingVisitId(null);
+                            }
+                          }}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-xs transition-colors"
+                        >
+                          Confirmar cambio
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMovingVisitId(null)}
+                          className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-600 font-semibold rounded-lg border border-slate-200 transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Actions bar */}
                   <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5">
@@ -273,6 +323,24 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
                       >
                         Editar
                       </button>
+
+                      {onMoveVisit && (
+                        <button
+                          onClick={() => {
+                            sound.playClick();
+                            setMovingVisitId(movingVisitId === visit.id ? null : visit.id);
+                            setSelectedTargetDate(dateString);
+                          }}
+                          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 ${
+                            movingVisitId === visit.id
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                          title="Cambiar fecha de la visita"
+                        >
+                          <span>📅 Mover fecha</span>
+                        </button>
+                      )}
 
                       {client && (
                         <button

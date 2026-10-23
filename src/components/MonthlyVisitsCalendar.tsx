@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Visit, Client, SalesRep } from '../types';
 import { sound } from '../utils/audioFeedback';
 
@@ -8,6 +8,7 @@ interface MonthlyVisitsCalendarProps {
   salesReps: SalesRep[];
   onOpenDayVisits: (dateString: string, dayVisits: Visit[]) => void;
   onNewVisitForDate: (dateString: string) => void;
+  onMoveVisit: (visitId: string, newDateString: string) => void;
   onEditVisit: (visit: Visit) => void;
   onOpenCheckInModal: (visit: Visit) => void;
   onSelectClientAndGoToMap: (clientId: string) => void;
@@ -36,6 +37,7 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
   salesReps,
   onOpenDayVisits,
   onNewVisitForDate,
+  onMoveVisit,
   onEditVisit: _onEditVisit,
   onOpenCheckInModal: _onOpenCheckInModal,
   onSelectClientAndGoToMap: _onSelectClientAndGoToMap,
@@ -61,6 +63,23 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
   // Filters
   const [selectedRepFilter, setSelectedRepFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
+
+  // Drag and Drop States
+  const [draggedVisit, setDraggedVisit] = useState<Visit | null>(null);
+  const [dragOverDateString, setDragOverDateString] = useState<string | null>(null);
+  const [toastNotification, setToastNotification] = useState<{
+    message: string;
+    type: 'success' | 'info';
+  } | null>(null);
+
+  // Auto-dismiss toast after 3.5s
+  useEffect(() => {
+    if (!toastNotification) return;
+    const timer = setTimeout(() => {
+      setToastNotification(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [toastNotification]);
 
   // Month navigation
   const handlePrevMonth = () => {
@@ -202,16 +221,123 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
     sound.playClick();
     const dayVisits = visitsByDate.get(dateString) || [];
     if (dayVisits.length > 0) {
-      // "Si hago doble click en ese dia , me enseñas las visitas en otra ventana."
       onOpenDayVisits(dateString, dayVisits);
     } else {
-      // "Tambien quiero poder hacer doble click en cualquier dia para meter una visita nueva."
       onNewVisitForDate(dateString);
     }
   };
 
+  // DRAG & DROP HANDLERS
+  const handleDragStart = (e: React.DragEvent, visit: Visit) => {
+    e.stopPropagation();
+    setDraggedVisit(visit);
+    e.dataTransfer.setData('text/plain', visit.id);
+    e.dataTransfer.setData('application/geoventas-visit', JSON.stringify({ id: visit.id, fromDate: visit.scheduledDate }));
+    e.dataTransfer.effectAllowed = 'move';
+    sound.playClick();
+  };
+
+  const handleDragEnd = () => {
+    setDraggedVisit(null);
+    setDragOverDateString(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, cellDateString: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverDateString !== cellDateString) {
+      setDragOverDateString(cellDateString);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent, cellDateString: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    if (dragOverDateString === cellDateString) {
+      setDragOverDateString(null);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetDateString: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const visitId = e.dataTransfer.getData('text/plain') || draggedVisit?.id;
+    setDragOverDateString(null);
+    setDraggedVisit(null);
+
+    if (!visitId) return;
+
+    const targetVisit = visits.find((v) => v.id === visitId);
+    if (!targetVisit) return;
+
+    if (targetVisit.scheduledDate === targetDateString) {
+      setToastNotification({
+        message: 'La visita ya está programada para esta fecha.',
+        type: 'info',
+      });
+      return;
+    }
+
+    const client = clients.find((c) => c.id === targetVisit.clientId);
+    const clientName = client ? client.name : 'Cliente';
+
+    // Format new date nicely for feedback (e.g. "24/10/2026")
+    const dateParts = targetDateString.split('-');
+    const formattedTarget = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : targetDateString;
+
+    // Trigger update
+    onMoveVisit(visitId, targetDateString);
+    sound.playSuccess();
+
+    setToastNotification({
+      message: `✅ Visita de ${clientName} movida al ${formattedTarget} con éxito.`,
+      type: 'success',
+    });
+  };
+
   return (
     <div className="space-y-4">
+      {/* Toast Notification for Drag & Drop feedback */}
+      {toastNotification && (
+        <div className="fixed top-20 right-6 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div
+            className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold ${
+              toastNotification.type === 'success'
+                ? 'bg-slate-900 text-white border-emerald-500 shadow-emerald-500/10'
+                : 'bg-white text-slate-800 border-slate-200 shadow-slate-900/10'
+            }`}
+          >
+            <span>{toastNotification.message}</span>
+            <button
+              onClick={() => setToastNotification(null)}
+              className="text-slate-400 hover:text-white ml-2 text-sm leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dragging Active Helper Banner */}
+      {draggedVisit && (
+        <div className="bg-blue-600 text-white px-4 py-2.5 rounded-2xl shadow-lg flex items-center justify-between gap-3 text-xs animate-pulse">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🖐️</span>
+            <span>
+              <strong>Arrastrando visita:</strong> Suelta la visita sobre cualquier día del calendario para moverla y reprogramarla.
+            </span>
+          </div>
+          <span className="text-[11px] bg-blue-700/80 px-2 py-0.5 rounded-lg border border-blue-400/40 font-mono">
+            {draggedVisit.scheduledTime || '09:00'} · {clients.find((c) => c.id === draggedVisit.clientId)?.name || 'Cliente'}
+          </span>
+        </div>
+      )}
+
       {/* Top Header & Context */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -224,12 +350,11 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                 Calendario Mensual de Visitas
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                Interactivo
+                Interactivo · Arrastrar y Soltar
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Visualiza el recuento diario de visitas comerciales. Haz{' '}
-              <strong className="text-slate-700 font-semibold">doble clic</strong> en cualquier día con visitas para verlas en otra ventana, o en cualquier día vacío para programar una nueva visita.
+              Visualiza el recuento diario de visitas. <strong>Arrastra cualquier visita</strong> de un día a otro para moverla libremente. Haz <strong>doble clic</strong> en un día con visitas para verlas en otra ventana, o en un día vacío para crear una nueva.
             </p>
           </div>
 
@@ -373,24 +498,39 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
             const count = dayVisits.length;
             const completedCount = dayVisits.filter((v) => v.status === 'completed').length;
             const hasSales = dayVisits.some((v) => (v.saleAmount || 0) > 0);
+            const isDropTarget = dragOverDateString === cell.dateString;
 
             return (
               <div
                 key={cell.dateString}
                 onDoubleClick={() => handleDayDoubleClick(cell.dateString)}
-                className={`min-h-[110px] sm:min-h-[125px] p-2 flex flex-col justify-between transition-all select-none cursor-pointer group relative ${
-                  !cell.isCurrentMonth
+                onDragOver={(e) => handleDragOver(e, cell.dateString)}
+                onDragLeave={(e) => handleDragLeave(e, cell.dateString)}
+                onDrop={(e) => handleDrop(e, cell.dateString)}
+                className={`min-h-[115px] sm:min-h-[130px] p-2 flex flex-col justify-between transition-all select-none relative group ${
+                  isDropTarget
+                    ? 'ring-2 ring-blue-500 bg-blue-100/90 z-20 scale-[1.01] shadow-md'
+                    : !cell.isCurrentMonth
                     ? 'bg-slate-50/50 opacity-40 hover:opacity-80'
                     : cell.isToday
                     ? 'bg-blue-50/30'
                     : 'bg-white hover:bg-slate-50/80'
-                } ${count > 0 ? 'hover:ring-1 hover:ring-blue-400/50' : ''}`}
+                } ${count > 0 && !isDropTarget ? 'hover:ring-1 hover:ring-blue-400/50' : ''}`}
                 title={`Fecha: ${cell.dateString}. ${
                   count > 0
-                    ? `Tiene ${count} visita(s). Haz doble clic para verlas en otra ventana.`
-                    : 'Sin visitas. Haz doble clic para meter una visita nueva.'
+                    ? `Tiene ${count} visita(s). Arrastra una visita para moverla o haz doble clic para abrir ventana.`
+                    : 'Sin visitas. Arrastra aquí una visita para moverla a este día, o haz doble clic para crear nueva.'
                 }`}
               >
+                {/* Visual Drop Target Overlay */}
+                {isDropTarget && (
+                  <div className="absolute inset-0 bg-blue-600/10 backdrop-blur-[1px] border-2 border-dashed border-blue-500 rounded-xl flex flex-col items-center justify-center p-2 text-center pointer-events-none z-30 animate-pulse">
+                    <span className="text-xl">📥</span>
+                    <span className="text-[11px] font-black text-blue-900 leading-tight">Soltar aquí</span>
+                    <span className="text-[9px] font-bold text-blue-700 mt-0.5">Mover al {cell.dayNumber} {MONTH_NAMES_ES[currentMonth]}</span>
+                  </div>
+                )}
+
                 {/* Top Row: Day Number + Visit Count Badge ("un 3 en ese dia del calendario") + Quick Add Button */}
                 <div className="flex items-start justify-between gap-1">
                   <div className="flex items-center gap-1.5">
@@ -443,30 +583,43 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                   </button>
                 </div>
 
-                {/* Middle Content: Mini Visit Chips preview */}
+                {/* Middle Content: Mini Visit Chips preview with DRAGGABLE support */}
                 <div className="my-1.5 space-y-1 overflow-hidden flex-1">
                   {count > 0 ? (
-                    dayVisits.slice(0, 2).map((visit) => {
+                    dayVisits.slice(0, 3).map((visit) => {
                       const client = clients.find((c) => c.id === visit.clientId);
                       const isCompleted = visit.status === 'completed';
+                      const isBeingDragged = draggedVisit?.id === visit.id;
 
                       return (
                         <div
                           key={visit.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, visit)}
+                          onDragEnd={handleDragEnd}
                           onClick={(e) => {
                             e.stopPropagation();
                             sound.playClick();
                             onOpenDayVisits(cell.dateString, dayVisits);
                           }}
-                          className={`text-[10px] leading-tight px-1.5 py-0.5 rounded truncate font-medium border flex items-center gap-1 ${
-                            isCompleted
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-blue-50 text-blue-800 border-blue-200'
+                          className={`text-[10px] leading-tight px-1.5 py-1 rounded-md font-medium border flex items-center gap-1.5 cursor-grab active:cursor-grabbing transition-all select-none group/chip ${
+                            isBeingDragged
+                              ? 'opacity-40 border-dashed border-blue-500 bg-blue-50 scale-95'
+                              : isCompleted
+                              ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 shadow-2xs'
+                              : 'bg-blue-50/90 text-blue-800 border-blue-200 hover:bg-blue-100 hover:border-blue-300 shadow-2xs'
                           }`}
-                          title={`${visit.scheduledTime || '09:00'} - ${client ? client.name : 'Cliente'}`}
+                          title={`🖐️ Arrastra para mover esta visita a otro día. Doble clic para abrir ventana.`}
                         >
+                          {/* Drag handle icon */}
+                          <span
+                            className="text-slate-400 group-hover/chip:text-blue-600 font-mono text-[9px] shrink-0 cursor-grab"
+                            title="Arrastra para mover"
+                          >
+                            ⋮⋮
+                          </span>
                           <span className="font-mono font-bold shrink-0">{visit.scheduledTime || '09:00'}</span>
-                          <span className="truncate">{client ? client.name : 'Cliente'}</span>
+                          <span className="truncate flex-1 font-semibold">{client ? client.name : 'Cliente'}</span>
                         </div>
                       );
                     })
@@ -476,16 +629,16 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                     </div>
                   )}
 
-                  {count > 2 && (
+                  {count > 3 && (
                     <div
                       onClick={(e) => {
                         e.stopPropagation();
                         sound.playClick();
                         onOpenDayVisits(cell.dateString, dayVisits);
                       }}
-                      className="text-[10px] font-bold text-blue-600 hover:underline pl-0.5"
+                      className="text-[10px] font-bold text-blue-600 hover:underline pl-0.5 cursor-pointer"
                     >
-                      +{count - 2} más...
+                      +{count - 3} más (ver todas)...
                     </div>
                   )}
                 </div>
@@ -530,14 +683,15 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded text-[10px] font-bold">
-              Programada
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-bold flex items-center gap-1">
+              <span>⋮⋮</span>
+              <span>Arrastrable</span>
             </span>
           </div>
         </div>
 
         <div className="text-slate-500 text-right text-[11px]">
-          <span>💡 <strong>Tip:</strong> Doble clic en cualquier día con visitas para abrir la ventana de detalles, o en cualquier día para meter una visita nueva.</span>
+          <span>💡 <strong>Arrastrar y Soltar:</strong> Arrastra cualquier cajita de visita con el ratón hacia otro día para reprogramarla al instante.</span>
         </div>
       </div>
     </div>

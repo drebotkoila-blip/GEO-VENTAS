@@ -607,6 +607,23 @@ export default function App() {
     setIsNewVisitOpen(true);
   };
 
+  // MOVE VISIT TO ANOTHER DATE (DRAG & DROP)
+  const handleMoveVisit = (visitId: string, newDateString: string) => {
+    let updatedVisit: Visit | null = null;
+    setVisits((prev) =>
+      prev.map((v) => {
+        if (v.id !== visitId) return v;
+        updatedVisit = { ...v, scheduledDate: newDateString };
+        return updatedVisit;
+      })
+    );
+
+    // Sync to Supabase if connected
+    if (updatedVisit && supabaseState.isConnected) {
+      supabase.from('visitas').upsert(mapVisitToRow(updatedVisit)).then(() => {});
+    }
+  };
+
   // CREATE NEW CLIENT AND VISIT
   const handleCreateClientAndVisit = (
     clientData: Omit<Client, 'id'>,
@@ -1200,6 +1217,7 @@ export default function App() {
             salesReps={salesReps}
             onOpenDayVisits={handleOpenDayVisits}
             onNewVisitForDate={handleNewVisitForDate}
+            onMoveVisit={handleMoveVisit}
             onEditVisit={(visit) => {
               setVisitToEdit(visit);
               setIsEditVisitModalOpen(true);
@@ -1384,6 +1402,7 @@ export default function App() {
             setIsEditVisitModalOpen(true);
           }}
           onDeleteVisit={handleDeleteVisit}
+          onMoveVisit={handleMoveVisit}
           onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
           onSelectClientAndGoToMap={(clientId) => {
             setSelectedClientId(clientId);
