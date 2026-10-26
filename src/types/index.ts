@@ -114,5 +114,8 @@ export interface Sale {
   fecha: string; // YYYY-MM-DD
   cantidad: number;
   importe: number;
+  pvp?: number;
+  numPedido?: string | number;
+  envio?: string;
 }
 

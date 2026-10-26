@@ -36,15 +36,36 @@ export const ClientSalesHistoryModal: React.FC<ClientSalesHistoryModalProps> = (
     return map;
   }, [articles]);
 
+const formatDateDisplay = (dateStr: string): string => {
+  if (!dateStr) return '—';
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+};
+
   // Filter sales for THIS client
   const clientSales = useMemo(() => {
     if (!client) return [];
     const clientNameNorm = client.name.trim().toLowerCase();
     const clientIdNorm = client.id.trim();
+    const clientCodeNorm = client.code ? client.code.trim().toLowerCase() : '';
 
     return sales.filter((s) => {
-      const matchId = s.idCliente && s.idCliente.trim() === clientIdNorm;
-      const matchName = s.cliente && s.cliente.trim().toLowerCase() === clientNameNorm;
+      const saleClientId = s.idCliente ? s.idCliente.trim() : '';
+      const saleClientName = s.cliente ? s.cliente.trim().toLowerCase() : '';
+
+      const matchId =
+        saleClientId &&
+        (saleClientId === clientIdNorm ||
+          (clientCodeNorm && saleClientId.toLowerCase() === clientCodeNorm) ||
+          (clientIdNorm && saleClientId.toLowerCase() === clientIdNorm.toLowerCase()));
+      const matchName =
+        saleClientName &&
+        (saleClientName === clientNameNorm ||
+          saleClientName.includes(clientNameNorm) ||
+          clientNameNorm.includes(saleClientName));
       return matchId || matchName;
     });
   }, [client, sales]);
@@ -532,7 +553,7 @@ export const ClientSalesHistoryModal: React.FC<ClientSalesHistoryModalProps> = (
 
                             {/* Última Compra */}
                             <td className="py-3 px-4 text-center font-mono text-slate-700 text-[11px] whitespace-nowrap">
-                              {item.lastPurchaseDate || '—'}
+                              {formatDateDisplay(item.lastPurchaseDate)}
                             </td>
 
                             {/* Stock Actual en Almacén */}
@@ -602,11 +623,11 @@ export const ClientSalesHistoryModal: React.FC<ClientSalesHistoryModalProps> = (
                     ) : (
                       filteredTransactions.map((s, idx) => {
                         const article = articleMap.get(s.referencia);
-                        const unitPrice = s.cantidad > 0 ? s.importe / s.cantidad : 0;
+                        const unitPrice = s.pvp && s.pvp > 0 ? s.pvp : (s.cantidad > 0 ? s.importe / s.cantidad : 0);
                         return (
                           <tr key={s.id || idx} className="hover:bg-blue-50/40 transition-colors">
                             <td className="py-3 px-4 font-mono font-medium text-slate-700 whitespace-nowrap">
-                              {s.fecha}
+                              {formatDateDisplay(s.fecha)}
                             </td>
                             <td className="py-3 px-4 font-mono text-blue-700 font-bold">
                               #{s.referencia}

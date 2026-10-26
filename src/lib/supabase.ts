@@ -272,18 +272,97 @@ export async function uploadArticlesToSupabase(articles: Article[]): Promise<{ c
 }
 
 /**
+ * Helper to parse European/Spanish formatted numbers (e.g. "210,60", "2.180,15", "7,02")
+ * into standard JavaScript numbers.
+ */
+export function parseSpanishNumber(val: any): number {
+  if (val === null || val === undefined || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (typeof val !== 'string') return Number(val) || 0;
+
+  // Clean string: trim, remove currency symbols and spaces
+  let str = val.trim().replace(/[€$\s]/g, '');
+  if (!str) return 0;
+
+  // If contains both '.' and ',' (e.g. "2.180,15" or "2,180.15")
+  if (str.includes('.') && str.includes(',')) {
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      // European format: 2.180,15 -> remove dot thousands separator, change comma to dot
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      // US format: 2,180.15 -> remove comma thousands separator
+      str = str.replace(/,/g, '');
+    }
+  } else if (str.includes(',')) {
+    // Only comma: e.g. "210,60" or "7,02" -> change to "210.60"
+    str = str.replace(',', '.');
+  }
+
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
+ * Normalizes date to ISO YYYY-MM-DD
+ * Handles "DD/MM/YYYY" (e.g. "23/09/2026") as well as "YYYY-MM-DD"
+ */
+export function normalizeDate(val: any): string {
+  if (!val) return new Date().toISOString().split('T')[0];
+  const str = String(val).trim();
+  // Check DD/MM/YYYY (e.g. 23/09/2026 or 5/9/2026)
+  if (str.includes('/')) {
+    const parts = str.split('/');
+    if (parts.length === 3) {
+      const d = parts[0].padStart(2, '0');
+      const m = parts[1].padStart(2, '0');
+      const y = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+      return `${y}-${m}-${d}`;
+    }
+  }
+  // Check YYYY-MM-DD
+  if (str.match(/^\d{4}-\d{2}-\d{2}/)) {
+    return str.slice(0, 10);
+  }
+  // Check DD-MM-YYYY
+  if (str.match(/^\d{1,2}-\d{1,2}-\d{4}/)) {
+    const parts = str.split('-');
+    const d = parts[0].padStart(2, '0');
+    const m = parts[1].padStart(2, '0');
+    const y = parts[2];
+    return `${y}-${m}-${d}`;
+  }
+  return str;
+}
+
+/**
  * Mapping functions for Ventas
  */
 export function mapRowToSale(row: any, index: number = 0): Sale {
+  const parsedCantidad = parseSpanishNumber(row.Cantidad ?? row.cantidad ?? 1);
+  const parsedPvp = parseSpanishNumber(row.PVP ?? row.pvp ?? row.precio ?? row.precio_unidad);
+  let parsedImporte = parseSpanishNumber(row.Importe ?? row.importe ?? row.total ?? row.Total ?? row.monto);
+
+  // If Importe was missing or 0 but PVP and Cantidad exist, calculate it
+  if (parsedImporte === 0 && parsedPvp > 0 && parsedCantidad > 0) {
+    parsedImporte = Math.round(parsedPvp * parsedCantidad * 100) / 100;
+  }
+
+  const effectivePvp = parsedPvp > 0 ? parsedPvp : (parsedCantidad > 0 ? Math.round((parsedImporte / parsedCantidad) * 100) / 100 : 0);
+
   return {
-    id: row.id ? String(row.id) : `sale-${row.id_cliente || 'c'}-${row.referencia || 'r'}-${row.Fecha || 'f'}-${index}`,
+    id: row.id ? String(row.id) : `sale-${row.id_cliente || row.idCliente || 'c'}-${row.referencia || row.Referencia || 'r'}-${row.Fecha || row.fecha || 'f'}-${index}`,
     cliente: row.cliente || row.Cliente || '',
     idCliente: String(row.id_cliente || row.IdCliente || row.cliente_id || ''),
     referencia: Number(row.referencia || row.Referencia) || 0,
     vendedor: row.Vendedor || row.vendedor || '',
-    fecha: row.Fecha || row.fecha || new Date().toISOString().split('T')[0],
-    cantidad: Number(row.Cantidad || row.cantidad) || 0,
-    importe: Number(row.Importe || row.importe) || 0,
+    fecha: normalizeDate(row.Fecha || row.fecha),
+    cantidad: parsedCantidad,
+    importe: parsedImporte,
+    pvp: effectivePvp,
+    numPedido: row['nº peddo'] ?? row.num_pedido ?? row.pedido,
+    envio: row['Cía Envío'] ?? row.envio ?? row.transportista,
   };
 }
 
@@ -297,6 +376,55 @@ export function mapSaleToRow(s: Sale): any {
     Cantidad: s.cantidad,
     Importe: s.importe,
   };
+}
+
+/**
+ * Fetches ALL sales from Supabase table VENTAS, handling pagination in chunks of 1000
+ * to ensure all records (e.g. 3,455+ rows) are completely loaded.
+ */
+export async function fetchAllSalesFromSupabase(): Promise<{ data: Sale[]; error: any }> {
+  try {
+    let allRows: any[] = [];
+    let from = 0;
+    const batchSize = 1000;
+    let tableName = 'VENTAS';
+
+    // Test which table exists: 'VENTAS' or 'ventas'
+    const test1 = await supabase.from('VENTAS').select('referencia', { count: 'exact', head: true });
+    if (test1.error) {
+      const test2 = await supabase.from('ventas').select('referencia', { count: 'exact', head: true });
+      if (!test2.error) {
+        tableName = 'ventas';
+      } else {
+        return { data: [], error: test1.error };
+      }
+    }
+
+    // Paginate through all batches
+    while (true) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .range(from, from + batchSize - 1);
+
+      if (error) {
+        if (allRows.length > 0) {
+          break; // Return partial rows if error occurred mid-way
+        }
+        return { data: [], error };
+      }
+
+      if (!data || data.length === 0) break;
+      allRows = allRows.concat(data);
+      if (data.length < batchSize) break;
+      from += batchSize;
+    }
+
+    const mappedSales = allRows.map((r, i) => mapRowToSale(r, i));
+    return { data: mappedSales, error: null };
+  } catch (err: any) {
+    return { data: [], error: err };
+  }
 }
 
 /**

@@ -996,7 +996,15 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   const saleIdKey = s.id || idx;
                   const isSelected = selectedSaleIds.includes(saleIdKey);
                   const article = articleMap.get(s.referencia);
-                  const unitPrice = s.cantidad > 0 ? s.importe / s.cantidad : 0;
+                  const unitPrice = s.pvp && s.pvp > 0 ? s.pvp : (s.cantidad > 0 ? s.importe / s.cantidad : 0);
+                  const formattedDate = (() => {
+                    if (!s.fecha) return '—';
+                    if (s.fecha.includes('-')) {
+                      const parts = s.fecha.split('-');
+                      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    }
+                    return s.fecha;
+                  })();
 
                   return (
                     <tr
@@ -1017,7 +1025,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
                       {/* Fecha */}
                       <td className="py-3 px-4 whitespace-nowrap font-mono font-medium text-slate-700">
-                        {s.fecha}
+                        {formattedDate}
                       </td>
 
                       {/* Cliente */}

@@ -47,6 +47,7 @@ import {
   mapRowToSale,
   mapSaleToRow,
   uploadSalesToSupabase,
+  fetchAllSalesFromSupabase,
   SupabaseSyncState,
 } from './lib/supabase';
 
@@ -190,7 +191,10 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Re-map with parseSpanishNumber in case old 0-amount rows were cached
+          return parsed.map((s: any, idx: number) => mapRowToSale(s, idx));
+        }
       } catch (err) {
         console.warn('Error reading geoventas_sales:', err);
       }
@@ -252,16 +256,10 @@ export default function App() {
       const { data: visitsData } = await supabase.from('visitas').select('*');
       const { data: articulosData } = await supabase.from('articulos').select('*');
 
-      // Try uppercase 'VENTAS' first, then lowercase 'ventas'
-      let ventasRows: any[] | null = null;
-      const { data: vData1, error: vErr1 } = await supabase.from('VENTAS').select('*');
-      if (!vErr1 && vData1 && vData1.length > 0) {
-        ventasRows = vData1;
-      } else {
-        const { data: vData2 } = await supabase.from('ventas').select('*');
-        if (vData2 && vData2.length > 0) {
-          ventasRows = vData2;
-        }
+      // Fetch all sales with pagination and robust number parsing
+      const { data: salesData } = await fetchAllSalesFromSupabase();
+      if (salesData && salesData.length > 0) {
+        setSales(salesData);
       }
 
       let hasTables = false;
@@ -286,11 +284,6 @@ export default function App() {
       if (articulosData && articulosData.length > 0) {
         const mappedArticulos = articulosData.map(mapRowToArticle);
         setArticles(mappedArticulos);
-      }
-
-      if (ventasRows && ventasRows.length > 0) {
-        const mappedSales = ventasRows.map((r, i) => mapRowToSale(r, i));
-        setSales(mappedSales);
       }
 
       // If tables exist in Supabase but have 0 records, automatically populate them with initial data
@@ -1048,16 +1041,9 @@ export default function App() {
   // SYNC SALES WITH SUPABASE
   const handleSyncSalesWithSupabase = async () => {
     if (!supabaseState.isConnected) return;
-    const { data, error } = await supabase.from('VENTAS').select('*');
+    const { data, error } = await fetchAllSalesFromSupabase();
     if (!error && data && data.length > 0) {
-      setSales(data.map((r, i) => mapRowToSale(r, i)));
-    } else {
-      const { data: dataLower, error: errLower } = await supabase.from('ventas').select('*');
-      if (!errLower && dataLower && dataLower.length > 0) {
-        setSales(dataLower.map((r, i) => mapRowToSale(r, i)));
-      } else {
-        await uploadSalesToSupabase(sales);
-      }
+      setSales(data);
     }
   };
 
