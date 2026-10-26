@@ -29,6 +29,7 @@ import { ClientDetailDrawer } from './components/ClientDetailDrawer';
 import { SupabaseSyncModal } from './components/SupabaseSyncModal';
 import { MonthlyVisitsCalendar } from './components/MonthlyVisitsCalendar';
 import { DayVisitsModal } from './components/DayVisitsModal';
+import { ClientSalesHistoryModal } from './components/ClientSalesHistoryModal';
 import { calculateDistanceMeters, calculateBearing, safeCoords, isValidCoordinate } from './utils/geoUtils';
 import { sound } from './utils/audioFeedback';
 import {
@@ -141,6 +142,11 @@ export default function App() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [calendarDayVisits, setCalendarDayVisits] = useState<Visit[]>([]);
   const [isDayVisitsModalOpen, setIsDayVisitsModalOpen] = useState<boolean>(false);
+
+  // Client Sales History Modal state (al hacer doble clic en visita en el calendario)
+  const [selectedClientForSalesModal, setSelectedClientForSalesModal] = useState<Client | null>(null);
+  const [selectedVisitForSalesModal, setSelectedVisitForSalesModal] = useState<Visit | null>(null);
+  const [isClientSalesModalOpen, setIsClientSalesModalOpen] = useState<boolean>(false);
 
   // CRM Client Editing Modal state
   const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
@@ -716,6 +722,13 @@ export default function App() {
   const handleNewVisitForDate = (dateString: string) => {
     setNewVisitInitialDate(dateString);
     setIsNewVisitOpen(true);
+  };
+
+  // Open client sales history & articles breakdown (al hacer doble clic en visita en el calendario)
+  const handleOpenClientSalesModal = (client: Client, visit?: Visit) => {
+    setSelectedClientForSalesModal(client);
+    setSelectedVisitForSalesModal(visit || null);
+    setIsClientSalesModalOpen(true);
   };
 
   // MOVE VISIT TO ANOTHER DATE (DRAG & DROP)
@@ -1511,6 +1524,8 @@ export default function App() {
             visits={visits}
             clients={clients}
             salesReps={salesReps}
+            sales={sales}
+            articles={articles}
             onOpenDayVisits={handleOpenDayVisits}
             onNewVisitForDate={handleNewVisitForDate}
             onMoveVisit={handleMoveVisit}
@@ -1523,6 +1538,7 @@ export default function App() {
               setSelectedClientId(clientId);
               setActiveTab('map');
             }}
+            onOpenClientSales={handleOpenClientSalesModal}
           />
         )}
 
@@ -1735,6 +1751,8 @@ export default function App() {
           visits={visits.filter((v) => v.scheduledDate === selectedCalendarDate)}
           clients={clients}
           salesReps={salesReps}
+          sales={sales}
+          articles={articles}
           onClose={() => {
             setIsDayVisitsModalOpen(false);
             setSelectedCalendarDate(null);
@@ -1754,8 +1772,33 @@ export default function App() {
             setSelectedClientId(clientId);
             setActiveTab('map');
           }}
+          onOpenClientSales={handleOpenClientSalesModal}
         />
       )}
+
+      {/* Modal Historial de Compras y Artículos del Cliente (al hacer doble clic en una visita en el calendario) */}
+      <ClientSalesHistoryModal
+        isOpen={isClientSalesModalOpen}
+        onClose={() => {
+          setIsClientSalesModalOpen(false);
+          setSelectedClientForSalesModal(null);
+          setSelectedVisitForSalesModal(null);
+        }}
+        client={selectedClientForSalesModal}
+        visit={selectedVisitForSalesModal}
+        sales={sales}
+        articles={articles}
+        onOpenNewSaleForClient={(clientId) => {
+          setIsClientSalesModalOpen(false);
+          setActiveTab('sales');
+          setIsNewSaleModalOpen(true);
+        }}
+        onGoToCrmClient={(clientId) => {
+          setIsClientSalesModalOpen(false);
+          setSelectedClientId(clientId);
+          setActiveTab('clients');
+        }}
+      />
 
       {/* 4. New Sales Rep (Vendedor) Modal */}
       {isNewEmployeeModalOpen && (

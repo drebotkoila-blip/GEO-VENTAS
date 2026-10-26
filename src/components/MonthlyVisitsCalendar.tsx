@@ -1,17 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Visit, Client, SalesRep } from '../types';
+import { Visit, Client, SalesRep, Sale, Article } from '../types';
 import { sound } from '../utils/audioFeedback';
 
 interface MonthlyVisitsCalendarProps {
   visits: Visit[];
   clients: Client[];
   salesReps: SalesRep[];
+  sales?: Sale[];
+  articles?: Article[];
   onOpenDayVisits: (dateString: string, dayVisits: Visit[]) => void;
   onNewVisitForDate: (dateString: string) => void;
   onMoveVisit: (visitId: string, newDateString: string) => void;
   onEditVisit: (visit: Visit) => void;
   onOpenCheckInModal: (visit: Visit) => void;
   onSelectClientAndGoToMap: (clientId: string) => void;
+  onOpenClientSales?: (client: Client, visit?: Visit) => void;
 }
 
 const MONTH_NAMES_ES = [
@@ -35,12 +38,15 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
   visits,
   clients,
   salesReps,
+  sales: _sales,
+  articles: _articles,
   onOpenDayVisits,
   onNewVisitForDate,
   onMoveVisit,
   onEditVisit: _onEditVisit,
   onOpenCheckInModal: _onOpenCheckInModal,
   onSelectClientAndGoToMap: _onSelectClientAndGoToMap,
+  onOpenClientSales,
 }) => {
   // Calendar viewed month & year
   const today = new Date();
@@ -354,7 +360,7 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Visualiza el recuento diario de visitas. <strong>Arrastra cualquier visita</strong> de un día a otro para moverla libremente. Haz <strong>doble clic</strong> en un día con visitas para verlas en otra ventana, o en un día vacío para crear una nueva.
+              Haz <strong>doble clic en cualquier visita</strong> para ver cuánto ha comprado ese cliente en el último año y sus artículos. También puedes <strong>arrastrar visitas</strong> para moverlas entre días.
             </p>
           </div>
 
@@ -602,6 +608,15 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                             sound.playClick();
                             onOpenDayVisits(cell.dateString, dayVisits);
                           }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            sound.playClick();
+                            if (client && onOpenClientSales) {
+                              onOpenClientSales(client, visit);
+                            } else {
+                              onOpenDayVisits(cell.dateString, dayVisits);
+                            }
+                          }}
                           className={`text-[10px] leading-tight px-1.5 py-1 rounded-md font-medium border flex items-center gap-1.5 cursor-grab active:cursor-grabbing transition-all select-none group/chip ${
                             isBeingDragged
                               ? 'opacity-40 border-dashed border-blue-500 bg-blue-50 scale-95'
@@ -609,7 +624,7 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                               ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 shadow-2xs'
                               : 'bg-blue-50/90 text-blue-800 border-blue-200 hover:bg-blue-100 hover:border-blue-300 shadow-2xs'
                           }`}
-                          title={`🖐️ Arrastra para mover esta visita a otro día. Doble clic para abrir ventana.`}
+                          title={`Doble clic: Ver cuánto ha comprado ${client ? client.name : 'este cliente'} en el último año y sus artículos. (Arrastra para mover).`}
                         >
                           {/* Drag handle icon */}
                           <span
@@ -620,6 +635,19 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                           </span>
                           <span className="font-mono font-bold shrink-0">{visit.scheduledTime || '09:00'}</span>
                           <span className="truncate flex-1 font-semibold">{client ? client.name : 'Cliente'}</span>
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (client && onOpenClientSales) {
+                                sound.playClick();
+                                onOpenClientSales(client, visit);
+                              }
+                            }}
+                            className="opacity-0 group-hover/chip:opacity-100 transition-opacity px-1 py-0.2 rounded hover:bg-blue-200/70 text-blue-800 text-[9px] font-bold cursor-pointer shrink-0"
+                            title="Ver compras del último año"
+                          >
+                            🛒 Compras
+                          </span>
                         </div>
                       );
                     })

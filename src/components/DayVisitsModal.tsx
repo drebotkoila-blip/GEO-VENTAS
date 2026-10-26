@@ -1,5 +1,5 @@
 import React from 'react';
-import { Visit, Client, SalesRep } from '../types';
+import { Visit, Client, SalesRep, Sale, Article } from '../types';
 import { sound } from '../utils/audioFeedback';
 
 interface DayVisitsModalProps {
@@ -7,6 +7,8 @@ interface DayVisitsModalProps {
   visits: Visit[];
   clients: Client[];
   salesReps: SalesRep[];
+  sales?: Sale[];
+  articles?: Article[];
   onClose: () => void;
   onNewVisitForDate: (dateString: string) => void;
   onEditVisit: (visit: Visit) => void;
@@ -14,6 +16,7 @@ interface DayVisitsModalProps {
   onMoveVisit?: (visitId: string, newDateString: string) => void;
   onOpenCheckInModal: (visit: Visit) => void;
   onSelectClientAndGoToMap: (clientId: string) => void;
+  onOpenClientSales?: (client: Client, visit?: Visit) => void;
 }
 
 export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
@@ -21,6 +24,8 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
   visits,
   clients,
   salesReps,
+  sales = [],
+  articles = [],
   onClose,
   onNewVisitForDate,
   onEditVisit,
@@ -28,6 +33,7 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
   onMoveVisit,
   onOpenCheckInModal,
   onSelectClientAndGoToMap,
+  onOpenClientSales,
 }) => {
   const [movingVisitId, setMovingVisitId] = React.useState<string | null>(null);
   const [selectedTargetDate, setSelectedTargetDate] = React.useState<string>(dateString);
@@ -147,6 +153,26 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
               const rep = salesReps.find((r) => r.id === visit.repId);
               const cleanPhone = client?.phone?.replace(/[^0-9]/g, '');
 
+              // Compute sales in the last 365 days for this client
+              const today = new Date();
+              const oneYearAgo = new Date();
+              oneYearAgo.setDate(today.getDate() - 365);
+              const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
+
+              const clientYearSales = client
+                ? sales.filter((s) => {
+                    const matchClient =
+                      (s.idCliente && s.idCliente.trim() === client.id.trim()) ||
+                      (s.cliente && s.cliente.trim().toLowerCase() === client.name.trim().toLowerCase());
+                    if (!matchClient) return false;
+                    return s.fecha && s.fecha >= oneYearAgoStr;
+                  })
+                : [];
+
+              const totalYearSpent = clientYearSales.reduce((acc, s) => acc + (Number(s.importe) || 0), 0);
+              const distinctArticlesCount = new Set(clientYearSales.map((s) => s.referencia)).size;
+              const totalYearUnits = clientYearSales.reduce((acc, s) => acc + (Number(s.cantidad) || 0), 0);
+
               const statusBadge = (() => {
                 switch (visit.status) {
                   case 'completed':
@@ -169,7 +195,15 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
                     e.dataTransfer.effectAllowed = 'move';
                     sound.playClick();
                   }}
-                  className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs hover:shadow-sm transition-all"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    sound.playClick();
+                    if (client && onOpenClientSales) {
+                      onOpenClientSales(client, visit);
+                    }
+                  }}
+                  className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs hover:shadow-sm transition-all cursor-default"
+                  title="Doble clic en la tarjeta para ver las compras y artículos de este cliente en el último año"
                 >
                   {/* Top line: Time, Rep, Status */}
                   <div className="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-2.5">
@@ -249,7 +283,7 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
                       {visit.status === 'completed' && (
                         <div className="bg-emerald-50 rounded-lg p-2 border border-emerald-100 text-[11px] text-emerald-900 mt-1">
                           <div className="flex items-center justify-between font-bold">
-                            <span>Venta cerrada:</span>
+                            <span>Venta cerrada en visita:</span>
                             <span>{visit.saleAmount ? visit.saleAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : '0,00 €'}</span>
                           </div>
                           {visit.notes && (
@@ -261,6 +295,63 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
                       )}
                     </div>
                   </div>
+
+                  {/* Client Last Year Purchases Banner */}
+                  {client && (
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onOpenClientSales) {
+                          sound.playClick();
+                          onOpenClientSales(client, visit);
+                        }
+                      }}
+                      className="mt-3 p-2.5 bg-gradient-to-r from-blue-50/80 via-indigo-50/70 to-slate-50 border border-blue-200/90 rounded-xl flex items-center justify-between gap-3 cursor-pointer hover:bg-blue-100/70 hover:border-blue-300 transition-all group/banner"
+                      title="Doble clic o clic aquí para ver cuánto te ha comprado en el último año y la lista completa de artículos"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <span className="text-sm">🛒</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-slate-800">
+                              Compras Último Año (365 días):
+                            </span>
+                            <span className="text-xs font-black text-blue-900 bg-blue-100 px-2 py-0.5 rounded-md">
+                              {totalYearSpent.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-0.5">
+                            {distinctArticlesCount > 0 ? (
+                              <span>
+                                Ha comprado <strong className="text-slate-800">{distinctArticlesCount}</strong> artículos distintos ({totalYearUnits} unidades). Haz doble clic para ver el desglose detallado.
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">
+                                Sin compras registradas en los últimos 12 meses. Haz clic para ver histórico.
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onOpenClientSales) {
+                            sound.playClick();
+                            onOpenClientSales(client, visit);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 group-hover/banner:bg-blue-700 text-white font-bold text-xs rounded-lg shrink-0 shadow-2xs transition-colors flex items-center gap-1"
+                      >
+                        <span>Ver Artículos</span>
+                        <span>➔</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Inline Date Mover Form if active */}
                   {movingVisitId === visit.id && (
@@ -353,6 +444,20 @@ export const DayVisitsModal: React.FC<DayVisitsModalProps> = ({
                           title="Ver en mapa"
                         >
                           <span>📍 Mapa</span>
+                        </button>
+                      )}
+
+                      {client && onOpenClientSales && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sound.playClick();
+                            onOpenClientSales(client, visit);
+                          }}
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                          title="Ver cuánto ha comprado en el último año y artículos adquiridos"
+                        >
+                          <span>🛒 Compras Año ({totalYearSpent.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })})</span>
                         </button>
                       )}
                     </div>
