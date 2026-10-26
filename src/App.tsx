@@ -23,6 +23,7 @@ import { EditArticleModal } from './components/EditArticleModal';
 import { VisitCheckInModal } from './components/VisitCheckInModal';
 import { NewVisitModal } from './components/NewVisitModal';
 import { NewSaleModal } from './components/NewSaleModal';
+import { ImportSalesModal } from './components/ImportSalesModal';
 import { NewEmployeeModal } from './components/NewEmployeeModal';
 import { VisitsHistoryModal } from './components/VisitsHistoryModal';
 import { ClientDetailDrawer } from './components/ClientDetailDrawer';
@@ -203,6 +204,7 @@ export default function App() {
   });
 
   const [isNewSaleModalOpen, setIsNewSaleModalOpen] = useState<boolean>(false);
+  const [isImportSalesModalOpen, setIsImportSalesModalOpen] = useState<boolean>(false);
 
   // Article Editing Modal state
   const [articleToEdit, setArticleToEdit] = useState<Article | null>(null);
@@ -1649,6 +1651,7 @@ export default function App() {
             clients={clients}
             salesReps={salesReps}
             onOpenNewSaleModal={() => setIsNewSaleModalOpen(true)}
+            onOpenImportExcelModal={() => setIsImportSalesModalOpen(true)}
             onDeleteSale={handleDeleteSale}
             onDeleteMultipleSales={handleDeleteMultipleSales}
             onSyncWithSupabase={handleSyncSalesWithSupabase}
@@ -1727,6 +1730,19 @@ export default function App() {
           articles={articles}
           salesReps={salesReps}
           initialClientId={selectedClientId || undefined}
+        />
+      )}
+
+      {/* 3c. Import Sales from Excel Modal */}
+      {isImportSalesModalOpen && (
+        <ImportSalesModal
+          isOpen={isImportSalesModalOpen}
+          onClose={() => setIsImportSalesModalOpen(false)}
+          onSalesImported={(newSales) => {
+            setSales((prev) => [...newSales, ...prev]);
+          }}
+          articles={articles}
+          isSupabaseConnected={supabaseState.isConnected}
         />
       )}
 

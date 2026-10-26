@@ -8,6 +8,7 @@ interface SalesViewProps {
   clients: Client[];
   salesReps: SalesRep[];
   onOpenNewSaleModal: () => void;
+  onOpenImportExcelModal?: () => void;
   onDeleteSale: (saleIdOrIndex: string | number) => void;
   onDeleteMultipleSales: (identifiers: (string | number)[]) => void;
   onSyncWithSupabase: () => Promise<void>;
@@ -27,6 +28,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   clients,
   salesReps,
   onOpenNewSaleModal,
+  onOpenImportExcelModal,
   onDeleteSale,
   onDeleteMultipleSales,
   onSyncWithSupabase,
@@ -477,6 +479,25 @@ export const SalesView: React.FC<SalesViewProps> = ({
             </svg>
             <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Supabase'}</span>
           </button>
+
+          {onOpenImportExcelModal && (
+            <button
+              onClick={() => {
+                sound.playClick();
+                onOpenImportExcelModal();
+              }}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Importar ventas del mes desde fichero Excel (.xlsx, .xls, .csv)"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+              </svg>
+              <span>📥 Importar Excel del Mes</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -982,12 +1003,25 @@ export const SalesView: React.FC<SalesViewProps> = ({
                       </svg>
                       <p className="font-semibold text-sm text-slate-600">No se encontraron ventas con los filtros seleccionados</p>
                       <p className="text-xs text-slate-400">Prueba a limpiar los filtros o registra una nueva venta</p>
-                      <button
-                        onClick={handleResetFilters}
-                        className="mt-2 px-3 py-1.5 bg-blue-50 text-blue-700 font-bold rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        Limpiar Filtros
-                      </button>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={handleResetFilters}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 font-bold rounded-lg hover:bg-blue-100 transition-colors"
+                        >
+                          Limpiar Filtros
+                        </button>
+                        {onOpenImportExcelModal && (
+                          <button
+                            onClick={() => {
+                              sound.playClick();
+                              onOpenImportExcelModal();
+                            }}
+                            className="px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
+                          >
+                            <span>📥 Importar Excel</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
