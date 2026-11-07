@@ -176,17 +176,28 @@ GRANT ALL ON public."VENTAS" TO anon, authenticated, service_role;`;
                 className={`p-4 rounded-xl border flex items-start gap-3.5 ${
                   syncState.isConnected
                     ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                    : syncState.isChecking
+                    ? 'bg-amber-50/90 border-amber-300 text-amber-950'
                     : 'bg-red-50/90 border-red-300 text-red-950'
                 }`}
               >
                 <div
                   className={`mt-0.5 p-2 rounded-xl text-white ${
-                    syncState.isConnected ? 'bg-emerald-600' : 'bg-red-600'
+                    syncState.isConnected
+                      ? 'bg-emerald-600'
+                      : syncState.isChecking
+                      ? 'bg-amber-600 animate-pulse'
+                      : 'bg-red-600'
                   }`}
                 >
                   {syncState.isConnected ? (
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  ) : syncState.isChecking ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                      <path d="M3 3v5h5"/>
                     </svg>
                   ) : (
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -202,20 +213,40 @@ GRANT ALL ON public."VENTAS" TO anon, authenticated, service_role;`;
                     <span className="font-bold text-sm">
                       {syncState.isConnected
                         ? 'Conectado Exitosamente a Supabase'
+                        : syncState.isChecking
+                        ? 'Comprobando conexión con Supabase...'
                         : 'Error al conectar con Supabase'}
                     </span>
                     <span className="text-[11px] font-mono font-semibold">
-                      {syncState.isConnected ? 'EN LÍNEA' : 'OFFLINE'}
+                      {syncState.isConnected ? 'EN LÍNEA' : syncState.isChecking ? 'CONECTANDO...' : 'OFFLINE'}
                     </span>
                   </div>
                   <p className="text-slate-600">
                     {syncState.isConnected
                       ? 'La API de Supabase responde y autentica correctamente con tu Publishable Key.'
+                      : syncState.isChecking
+                      ? 'Verificando disponibilidad de la base de datos...'
                       : syncState.error || 'Verifica la URL o conexión.'}
                   </p>
-                  <p className="text-[11px] text-slate-500 font-mono">
-                    URL: {SUPABASE_URL}
-                  </p>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono pt-0.5">
+                    <span>URL: {SUPABASE_URL}</span>
+                    <span className="text-slate-400">
+                      {syncState.lastSyncTime ? `Última sincronización: ${syncState.lastSyncTime}` : ''}
+                    </span>
+                  </div>
+
+                  {!syncState.isConnected && !syncState.isChecking && (
+                    <div className="mt-2 pt-2 border-t border-red-200/60 text-[11px] text-red-800 flex items-center justify-between">
+                      <span>Tu base de datos está activa con 3.455 ventas. Pulsa abajo para reintentar la conexión.</span>
+                      <button
+                        type="button"
+                        onClick={handleManualSync}
+                        className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors shrink-0 shadow-2xs"
+                      >
+                        Reconectar Ahora
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -233,8 +233,14 @@ export default function App() {
 
   // SUPABASE INITIALIZATION & SYNC
   const fetchSupabaseData = async () => {
+    setSupabaseState((prev) => ({
+      ...prev,
+      isChecking: true,
+      error: null,
+    }));
+
     try {
-      const conn = await checkSupabaseConnection();
+      const conn = await checkSupabaseConnection(2);
       if (!conn.isConnected) {
         setSupabaseState((prev) => ({
           ...prev,

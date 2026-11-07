@@ -28,21 +28,45 @@ export { ARTICULOS_FULL_SQL } from '../data/articulosSql';
 
 /**
  * Health check to verify connection to the Supabase endpoint
+ * Performs multiple retries in case of transient network glitches
  */
-export async function checkSupabaseConnection(): Promise<{ isConnected: boolean; error: string | null }> {
-  try {
-    const { error } = await supabase.from('vendedores').select('id', { count: 'exact', head: true });
-    if (!error) {
-      return { isConnected: true, error: null };
+export async function checkSupabaseConnection(retries: number = 2): Promise<{ isConnected: boolean; error: string | null }> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // Query vendedores table (limit 1) which is lightweight and checks actual data access
+      const { data, error } = await supabase.from('vendedores').select('id').limit(1);
+      if (!error) {
+        return { isConnected: true, error: null };
+      }
+
+      // If table doesn't exist yet (PGRST204 or 42P01), the connection to Supabase is still valid
+      if (error.code === 'PGRST204' || error.code === '42P01') {
+        return { isConnected: true, error: null };
+      }
+
+      // If it's a transient failure and we have retries left, wait briefly and retry
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+        continue;
+      }
+
+      return { isConnected: false, error: error.message };
+    } catch (err: any) {
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+        continue;
+      }
+      const msg = err.message || String(err);
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        return {
+          isConnected: false,
+          error: 'No se pudo contactar con Supabase (Failed to fetch). Comprueba tu conexión a internet o pulsa en "Reconectar".',
+        };
+      }
+      return { isConnected: false, error: msg || 'Error de conexión' };
     }
-    // If the table doesn't exist yet, error code PGRST204 or 42P01 means the database connection is alive
-    if (error.code === 'PGRST204' || error.code === '42P01') {
-      return { isConnected: true, error: null };
-    }
-    return { isConnected: false, error: error.message };
-  } catch (err: any) {
-    return { isConnected: false, error: err.message || 'Error de conexión' };
   }
+  return { isConnected: false, error: 'Tiempo de espera agotado al conectar con Supabase' };
 }
 
 /**
