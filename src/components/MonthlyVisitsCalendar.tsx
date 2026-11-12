@@ -48,22 +48,18 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
   onSelectClientAndGoToMap: _onSelectClientAndGoToMap,
   onOpenClientSales,
 }) => {
-  // Calendar viewed month & year
-  const today = new Date();
-  const [currentYear, setCurrentYear] = useState<number>(() => {
-    if (visits.length > 0) {
-      const parts = visits[0].scheduledDate.split('-');
-      if (parts[0]) return Number(parts[0]);
-    }
-    return today.getFullYear();
-  });
+  // Calendar viewed month & year (defaults to today)
+  const today = useMemo(() => new Date(), []);
+  const [currentYear, setCurrentYear] = useState<number>(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState<number>(today.getMonth());
 
-  const [currentMonth, setCurrentMonth] = useState<number>(() => {
-    if (visits.length > 0) {
-      const parts = visits[0].scheduledDate.split('-');
-      if (parts[1]) return Number(parts[1]) - 1;
-    }
-    return today.getMonth();
+  // View mode: monthly grid or weekly columns
+  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
   });
 
   // Filters
@@ -90,6 +86,14 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
   // Month navigation
   const handlePrevMonth = () => {
     sound.playClick();
+    if (viewMode === 'week') {
+      setWeekStart((w) => {
+        const d = new Date(w);
+        d.setDate(d.getDate() - 7);
+        return d;
+      });
+      return;
+    }
     if (currentMonth === 0) {
       setCurrentMonth(11);
       setCurrentYear((y) => y - 1);
@@ -100,6 +104,14 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
 
   const handleNextMonth = () => {
     sound.playClick();
+    if (viewMode === 'week') {
+      setWeekStart((w) => {
+        const d = new Date(w);
+        d.setDate(d.getDate() + 7);
+        return d;
+      });
+      return;
+    }
     if (currentMonth === 11) {
       setCurrentMonth(0);
       setCurrentYear((y) => y + 1);
@@ -112,6 +124,10 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
     sound.playClick();
     setCurrentYear(today.getFullYear());
     setCurrentMonth(today.getMonth());
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    setWeekStart(d);
   };
 
   // Filtered visits
@@ -306,422 +322,391 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
     });
   };
 
+  // Week days (Mon..Sun) for weekly view
+  const weekDays = useMemo(() => {
+    const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return {
+        dateString: ymd,
+        label: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][i],
+        display: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`,
+        isToday: ymd === todayYmd,
+      };
+    });
+  }, [weekStart, today]);
+
+  const yearOptions = useMemo(() => {
+    const base = today.getFullYear();
+    return [base - 2, base - 1, base, base + 1, base + 2];
+  }, [today]);
+
+  const statusChipClass = (status: string) =>
+    status === 'completed'
+      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+      : status === 'in_progress'
+      ? 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+      : status === 'cancelled'
+      ? 'bg-slate-50 text-slate-500 border-slate-200 line-through'
+      : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100';
+
+  const renderChip = (visit: Visit, dateString: string, dayVisits: Visit[], compact: boolean) => {
+    const client = clients.find((c) => c.id === visit.clientId);
+    const isBeingDragged = draggedVisit?.id === visit.id;
+    const rep = salesReps.find((r) => r.id === visit.repId);
+    return (
+      <div
+        key={visit.id}
+        draggable
+        onDragStart={(e) => handleDragStart(e, visit)}
+        onDragEnd={handleDragEnd}
+        onClick={(e) => {
+          e.stopPropagation();
+          sound.playClick();
+          onOpenDayVisits(dateString, dayVisits);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          sound.playClick();
+          if (client && onOpenClientSales) onOpenClientSales(client, visit);
+          else onOpenDayVisits(dateString, dayVisits);
+        }}
+        title={`${visit.scheduledTime || '09:00'} · ${client ? client.name : 'Cliente'}${rep ? ' · ' + rep.name : ''}\nDoble clic: ver compras del cliente. Arrastra para mover.`}
+        className={`group/chip border rounded-[4px] cursor-grab active:cursor-grabbing select-none transition-colors ${
+          isBeingDragged ? 'opacity-40 border-dashed border-blue-500' : statusChipClass(visit.status)
+        } ${compact ? 'text-[9.5px] leading-tight px-1 py-[3px] flex items-center gap-1' : 'text-[11px] px-2 py-1.5'}`}
+      >
+        {compact ? (
+          <>
+            <span className="font-mono opacity-70 shrink-0">{visit.scheduledTime || '09:00'}</span>
+            <span className="truncate flex-1 font-semibold">{client ? client.name : 'Cliente'}</span>
+            <svg className="shrink-0 opacity-50" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></svg>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-1">
+              <span className="font-mono font-bold">{visit.scheduledTime || '09:00'}</span>
+              {rep && <span className="text-[9px] opacity-60 truncate">{rep.name.split(' ')[0]}</span>}
+            </div>
+            <div className="font-semibold truncate mt-0.5">{client ? client.name : 'Cliente'}</div>
+            {visit.objective && <div className="text-[10px] opacity-70 truncate">{visit.objective}</div>}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   return (
     <div className="space-y-4">
-      {/* Toast Notification for Drag & Drop feedback */}
       {toastNotification && (
-        <div className="fixed top-20 right-6 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="fixed top-20 right-6 z-50">
           <div
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold ${
-              toastNotification.type === 'success'
-                ? 'bg-slate-900 text-white border-emerald-500 shadow-emerald-500/10'
-                : 'bg-white text-slate-800 border-slate-200 shadow-slate-900/10'
+            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl border text-xs font-semibold ${
+              toastNotification.type === 'success' ? 'bg-slate-900 text-white border-slate-800' : 'bg-white text-slate-800 border-slate-200'
             }`}
           >
             <span>{toastNotification.message}</span>
-            <button
-              onClick={() => setToastNotification(null)}
-              className="text-slate-400 hover:text-white ml-2 text-sm leading-none"
-            >
+            <button onClick={() => setToastNotification(null)} className="text-slate-400 hover:text-white ml-2 text-sm leading-none">
               ×
             </button>
           </div>
         </div>
       )}
 
-      {/* Dragging Active Helper Banner */}
-      {draggedVisit && (
-        <div className="bg-blue-600 text-white px-4 py-2.5 rounded-2xl shadow-lg flex items-center justify-between gap-3 text-xs animate-pulse">
-          <div className="flex items-center gap-2">
-            <span className="text-base">🖐️</span>
-            <span>
-              <strong>Arrastrando visita:</strong> Suelta la visita sobre cualquier día del calendario para moverla y reprogramarla.
-            </span>
-          </div>
-          <span className="text-[11px] bg-blue-700/80 px-2 py-0.5 rounded-lg border border-blue-400/40 font-mono">
-            {draggedVisit.scheduledTime || '09:00'} · {clients.find((c) => c.id === draggedVisit.clientId)?.name || 'Cliente'}
-          </span>
-        </div>
-      )}
-
-      {/* Top Header & Context */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
-                📅
-              </div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                Calendario Mensual de Visitas
-              </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                Interactivo · Arrastrar y Soltar
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Haz <strong>doble clic en cualquier visita</strong> para ver cuánto ha comprado ese cliente en el último año y sus artículos. También puedes <strong>arrastrar visitas</strong> para moverlas entre días.
-            </p>
-          </div>
-
-          {/* Month Controls & Actions */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 border-b border-slate-200">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <button
-                onClick={handlePrevMonth}
-                className="p-1.5 rounded-lg hover:bg-white text-slate-700 transition-colors"
-                title="Mes anterior"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 text-xs border border-slate-200">
+              {(['month', 'week'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => {
+                    sound.playClick();
+                    setViewMode(m);
+                  }}
+                  className={`px-2.5 py-1 rounded-md font-medium flex items-center gap-1.5 ${
+                    viewMode === m ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  {m === 'month' ? 'Mensual' : 'Semanal'}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 text-xs border border-slate-200">
+              <button onClick={handlePrevMonth} className="px-1.5 py-1 rounded-md hover:bg-white text-slate-600" title="Anterior">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
-
-              <span className="px-3 text-xs font-black text-slate-900 tracking-wide min-w-[140px] text-center select-none">
-                {MONTH_NAMES_ES[currentMonth]} {currentYear}
-              </span>
-
-              <button
-                onClick={handleNextMonth}
-                className="p-1.5 rounded-lg hover:bg-white text-slate-700 transition-colors"
-                title="Mes siguiente"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
+              <button onClick={handleGoToToday} className="px-2.5 py-1 rounded-md hover:bg-white text-slate-700 font-medium">
+                Hoy
+              </button>
+              <button onClick={handleNextMonth} className="px-1.5 py-1 rounded-md hover:bg-white text-slate-600" title="Siguiente">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
 
-            <button
-              onClick={handleGoToToday}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition-colors"
-            >
-              Hoy
-            </button>
+            {viewMode === 'month' ? (
+              <div className="flex items-center gap-1">
+                <select
+                  value={currentMonth}
+                  onChange={(e) => setCurrentMonth(Number(e.target.value))}
+                  className="text-base font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer"
+                >
+                  {MONTH_NAMES_ES.map((m, i) => (
+                    <option key={m} value={i}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  value={currentYear}
+                  onChange={(e) => setCurrentYear(Number(e.target.value))}
+                  className="text-base font-semibold text-slate-700 bg-transparent focus:outline-none cursor-pointer font-mono"
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-semibold text-slate-700">Semana:</span>
+                <span className="font-mono px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+                  {weekDays[0].display} al {weekDays[6].display}
+                </span>
+              </div>
+            )}
+          </div>
 
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <label className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 py-1 bg-white">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 16 0v1"/></svg>
+              <select
+                value={selectedRepFilter}
+                onChange={(e) => setSelectedRepFilter(e.target.value)}
+                className="bg-transparent font-medium text-slate-700 focus:outline-none"
+              >
+                <option value="all">Todos los Comerciales</option>
+                {salesReps.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 py-1 bg-white">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400"><path d="M3 6h18M7 12h10M10 18h4"/></svg>
+              <select
+                value={selectedStatusFilter}
+                onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                className="bg-transparent font-medium text-slate-700 focus:outline-none"
+              >
+                <option value="all">Todos los Estados</option>
+                <option value="scheduled">Pendientes</option>
+                <option value="in_progress">En curso</option>
+                <option value="completed">Completadas</option>
+                <option value="cancelled">Canceladas</option>
+              </select>
+            </label>
             <button
               onClick={() => {
                 sound.playClick();
-                const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(
-                  today.getDate()
-                ).padStart(2, '0')}`;
-                onNewVisitForDate(todayStr);
+                onNewVisitForDate(todayYmd);
               }}
-              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center gap-1.5"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              <span>+ Programar Visita</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Programar Visita
             </button>
           </div>
         </div>
 
-        {/* Filters & Month KPIs Strip */}
-        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-          {/* Rep filter */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1">Filtrar por Vendedor:</label>
-            <select
-              value={selectedRepFilter}
-              onChange={(e) => setSelectedRepFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todos los vendedores ({salesReps.length})</option>
-              {salesReps.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} ({r.territory})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Status filter */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1">Estado de Visita:</label>
-            <select
-              value={selectedStatusFilter}
-              onChange={(e) => setSelectedStatusFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todos los estados</option>
-              <option value="scheduled">Programadas</option>
-              <option value="completed">Completadas</option>
-              <option value="in_progress">En curso</option>
-              <option value="cancelled">Canceladas</option>
-            </select>
-          </div>
-
-          {/* Month KPI 1 */}
-          <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Total en el Mes</span>
-              <span className="text-base font-black text-slate-900 font-mono">
-                {monthStats.monthTotalVisits} visitas
-              </span>
-            </div>
-            <span className="text-[11px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md">
-              {monthStats.daysWithVisits} días activos
-            </span>
-          </div>
-
-          {/* Month KPI 2 */}
-          <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Ventas Cerradas</span>
-              <span className="text-base font-black text-emerald-600 font-mono">
-                {monthStats.monthSales.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-              </span>
-            </div>
-            <span className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md">
-              {monthStats.monthCompletedVisits} completadas
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Calendar Grid Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-        {/* Days of Week Header */}
-        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-100/70 text-center">
-          {WEEKDAYS_ES.map((dayName, idx) => (
-            <div
-              key={dayName}
-              className={`py-2.5 text-xs font-bold tracking-wider uppercase ${
-                idx >= 5 ? 'text-slate-400' : 'text-slate-700'
-              }`}
-            >
-              {dayName}
-            </div>
-          ))}
-        </div>
-
-        {/* 7-Column Days Grid */}
-        <div className="grid grid-cols-7 divide-x divide-y divide-slate-100">
-          {calendarDays.map((cell) => {
-            const dayVisits = visitsByDate.get(cell.dateString) || [];
-            const count = dayVisits.length;
-            const completedCount = dayVisits.filter((v) => v.status === 'completed').length;
-            const hasSales = dayVisits.some((v) => (v.saleAmount || 0) > 0);
-            const isDropTarget = dragOverDateString === cell.dateString;
-
-            return (
-              <div
-                key={cell.dateString}
-                onDoubleClick={() => handleDayDoubleClick(cell.dateString)}
-                onDragOver={(e) => handleDragOver(e, cell.dateString)}
-                onDragLeave={(e) => handleDragLeave(e, cell.dateString)}
-                onDrop={(e) => handleDrop(e, cell.dateString)}
-                className={`min-h-[115px] sm:min-h-[130px] p-2 flex flex-col justify-between transition-all select-none relative group ${
-                  isDropTarget
-                    ? 'ring-2 ring-blue-500 bg-blue-100/90 z-20 scale-[1.01] shadow-md'
-                    : !cell.isCurrentMonth
-                    ? 'bg-slate-50/50 opacity-40 hover:opacity-80'
-                    : cell.isToday
-                    ? 'bg-blue-50/30'
-                    : 'bg-white hover:bg-slate-50/80'
-                } ${count > 0 && !isDropTarget ? 'hover:ring-1 hover:ring-blue-400/50' : ''}`}
-                title={`Fecha: ${cell.dateString}. ${
-                  count > 0
-                    ? `Tiene ${count} visita(s). Arrastra una visita para moverla o haz doble clic para abrir ventana.`
-                    : 'Sin visitas. Arrastra aquí una visita para moverla a este día, o haz doble clic para crear nueva.'
-                }`}
-              >
-                {/* Visual Drop Target Overlay */}
-                {isDropTarget && (
-                  <div className="absolute inset-0 bg-blue-600/10 backdrop-blur-[1px] border-2 border-dashed border-blue-500 rounded-xl flex flex-col items-center justify-center p-2 text-center pointer-events-none z-30 animate-pulse">
-                    <span className="text-xl">📥</span>
-                    <span className="text-[11px] font-black text-blue-900 leading-tight">Soltar aquí</span>
-                    <span className="text-[9px] font-bold text-blue-700 mt-0.5">Mover al {cell.dayNumber} {MONTH_NAMES_ES[currentMonth]}</span>
-                  </div>
-                )}
-
-                {/* Top Row: Day Number + Visit Count Badge ("un 3 en ese dia del calendario") + Quick Add Button */}
-                <div className="flex items-start justify-between gap-1">
-                  <div className="flex items-center gap-1.5">
-                    {/* Day number */}
-                    <span
-                      className={`text-xs font-bold flex items-center justify-center rounded-full ${
-                        cell.isToday
-                          ? 'w-6 h-6 bg-blue-600 text-white shadow-xs'
-                          : cell.isCurrentMonth
-                          ? 'text-slate-800'
-                          : 'text-slate-400'
-                      }`}
-                    >
-                      {cell.dayNumber}
-                    </span>
-
-                    {/* PROMINENT COUNT BADGE: Exactly as requested ("un 3 en ese dia del calendario") */}
-                    {count > 0 && (
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          sound.playClick();
-                          onOpenDayVisits(cell.dateString, dayVisits);
-                        }}
-                        className={`inline-flex items-center justify-center px-2 py-0.5 text-xs font-black rounded-full shadow-2xs border transition-transform hover:scale-110 cursor-pointer ${
-                          completedCount === count
-                            ? 'bg-emerald-500 text-white border-emerald-600'
-                            : completedCount > 0
-                            ? 'bg-blue-600 text-white border-blue-700'
-                            : 'bg-blue-500 text-white border-blue-600'
-                        }`}
-                        title={`${count} ${count === 1 ? 'visita' : 'visitas'} el ${cell.dateString}. Click o doble clic para abrir ventana.`}
-                      >
-                        {count}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Add (+) quick button on hover */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      sound.playClick();
-                      onNewVisitForDate(cell.dateString);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-md bg-blue-100 hover:bg-blue-600 hover:text-white text-blue-700 flex items-center justify-center text-xs font-black shadow-2xs"
-                    title={`Meter visita nueva para el ${cell.dateString}`}
-                  >
-                    +
-                  </button>
+        {viewMode === 'month' ? (
+          <>
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center">
+              {WEEKDAYS_ES.map((dayName, idx) => (
+                <div key={dayName} className={`py-2 text-xs font-medium ${idx >= 5 ? 'text-slate-400 bg-slate-100/60' : 'text-slate-700'}`}>
+                  {dayName}
                 </div>
-
-                {/* Middle Content: Mini Visit Chips preview with DRAGGABLE support */}
-                <div className="my-1.5 space-y-1 overflow-hidden flex-1">
-                  {count > 0 ? (
-                    dayVisits.slice(0, 3).map((visit) => {
-                      const client = clients.find((c) => c.id === visit.clientId);
-                      const isCompleted = visit.status === 'completed';
-                      const isBeingDragged = draggedVisit?.id === visit.id;
-
-                      return (
-                        <div
-                          key={visit.id}
-                          draggable={true}
-                          onDragStart={(e) => handleDragStart(e, visit)}
-                          onDragEnd={handleDragEnd}
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {calendarDays.map((cell, idx) => {
+                const dayVisits = visitsByDate.get(cell.dateString) || [];
+                const count = dayVisits.length;
+                const isDropTarget = dragOverDateString === cell.dateString;
+                const isWeekend = idx % 7 >= 5;
+                return (
+                  <div
+                    key={cell.dateString}
+                    onDoubleClick={() => handleDayDoubleClick(cell.dateString)}
+                    onDragOver={(e) => handleDragOver(e, cell.dateString)}
+                    onDragLeave={(e) => handleDragLeave(e, cell.dateString)}
+                    onDrop={(e) => handleDrop(e, cell.dateString)}
+                    className={`relative min-h-[88px] p-1.5 border-b border-r border-slate-200 select-none transition-colors group ${
+                      idx % 7 === 6 ? 'border-r-0' : ''
+                    } ${
+                      isDropTarget
+                        ? 'bg-blue-100 ring-2 ring-inset ring-blue-500'
+                        : cell.isToday
+                        ? 'bg-blue-50/60 ring-2 ring-inset ring-blue-600'
+                        : isWeekend
+                        ? 'bg-slate-50/60 hover:bg-slate-50'
+                        : 'bg-white hover:bg-slate-50/70'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-xs font-medium ${
+                            cell.isToday
+                              ? 'w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold'
+                              : cell.isCurrentMonth
+                              ? 'text-slate-800'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {cell.dayNumber}
+                        </span>
+                        {cell.isToday && <span className="text-[10px] font-medium text-blue-700">Hoy</span>}
+                      </div>
+                      {count > 0 ? (
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
                             sound.playClick();
                             onOpenDayVisits(cell.dateString, dayVisits);
                           }}
-                          onDoubleClick={(e) => {
+                          className="w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center"
+                          title={`${count} visita(s)`}
+                        >
+                          {count}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => {
                             e.stopPropagation();
                             sound.playClick();
-                            if (client && onOpenClientSales) {
-                              onOpenClientSales(client, visit);
-                            } else {
-                              onOpenDayVisits(cell.dateString, dayVisits);
-                            }
+                            onNewVisitForDate(cell.dateString);
                           }}
-                          className={`text-[10px] leading-tight px-1.5 py-1 rounded-md font-medium border flex items-center gap-1.5 cursor-grab active:cursor-grabbing transition-all select-none group/chip ${
-                            isBeingDragged
-                              ? 'opacity-40 border-dashed border-blue-500 bg-blue-50 scale-95'
-                              : isCompleted
-                              ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 shadow-2xs'
-                              : 'bg-blue-50/90 text-blue-800 border-blue-200 hover:bg-blue-100 hover:border-blue-300 shadow-2xs'
-                          }`}
-                          title={`Doble clic: Ver cuánto ha comprado ${client ? client.name : 'este cliente'} en el último año y sus artículos. (Arrastra para mover).`}
+                          className="opacity-0 group-hover:opacity-100 w-4 h-4 rounded text-blue-600 hover:bg-blue-100 text-xs font-bold leading-none"
+                          title="Programar visita"
                         >
-                          {/* Drag handle icon */}
-                          <span
-                            className="text-slate-400 group-hover/chip:text-blue-600 font-mono text-[9px] shrink-0 cursor-grab"
-                            title="Arrastra para mover"
-                          >
-                            ⋮⋮
-                          </span>
-                          <span className="font-mono font-bold shrink-0">{visit.scheduledTime || '09:00'}</span>
-                          <span className="truncate flex-1 font-semibold">{client ? client.name : 'Cliente'}</span>
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (client && onOpenClientSales) {
-                                sound.playClick();
-                                onOpenClientSales(client, visit);
-                              }
-                            }}
-                            className="opacity-0 group-hover/chip:opacity-100 transition-opacity px-1 py-0.2 rounded hover:bg-blue-200/70 text-blue-800 text-[9px] font-bold cursor-pointer shrink-0"
-                            title="Ver compras del último año"
-                          >
-                            🛒 Compras
-                          </span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-[10px] text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span>Doble clic para crear</span>
+                          +
+                        </button>
+                      )}
                     </div>
-                  )}
-
-                  {count > 3 && (
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        sound.playClick();
-                        onOpenDayVisits(cell.dateString, dayVisits);
-                      }}
-                      className="text-[10px] font-bold text-blue-600 hover:underline pl-0.5 cursor-pointer"
-                    >
-                      +{count - 3} más (ver todas)...
+                    <div className="space-y-[3px]">
+                      {dayVisits.slice(0, 3).map((v) => renderChip(v, cell.dateString, dayVisits, true))}
+                      {count > 3 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenDayVisits(cell.dateString, dayVisits);
+                          }}
+                          className="text-[9.5px] font-semibold text-blue-600 hover:underline"
+                        >
+                          +{count - 3} más
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-7 min-h-[420px]">
+            {weekDays.map((day, idx) => {
+              const dayVisits = [...(visitsByDate.get(day.dateString) || [])].sort((a, b) =>
+                (a.scheduledTime || '').localeCompare(b.scheduledTime || '')
+              );
+              const isDropTarget = dragOverDateString === day.dateString;
+              return (
+                <div
+                  key={day.dateString}
+                  onDoubleClick={() => handleDayDoubleClick(day.dateString)}
+                  onDragOver={(e) => handleDragOver(e, day.dateString)}
+                  onDragLeave={(e) => handleDragLeave(e, day.dateString)}
+                  onDrop={(e) => handleDrop(e, day.dateString)}
+                  className={`flex flex-col ${idx < 6 ? 'border-r border-slate-200' : ''} ${
+                    day.isToday ? 'ring-2 ring-inset ring-blue-600' : ''
+                  } ${isDropTarget ? 'bg-blue-50' : ''}`}
+                >
+                  <div
+                    className={`px-2 py-2 flex items-center justify-between border-b ${
+                      day.isToday ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] font-bold uppercase tracking-wide">{day.label}</span>
+                        {day.isToday && <span className="text-[8px] font-bold bg-white text-blue-700 rounded px-1">HOY</span>}
+                      </div>
+                      <div className={`text-[10px] font-mono ${day.isToday ? 'text-blue-100' : 'text-slate-400'}`}>{day.display}</div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span
+                        className={`min-w-4 h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${
+                          day.isToday ? 'bg-white text-blue-700' : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {dayVisits.length}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          sound.playClick();
+                          onNewVisitForDate(day.dateString);
+                        }}
+                        className={`w-4 h-4 text-sm leading-none font-bold ${day.isToday ? 'text-white' : 'text-slate-400 hover:text-blue-600'}`}
+                        title="Programar visita"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 p-1.5 space-y-1.5">
+                    {dayVisits.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 py-10">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-300 mb-1"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        <span className="text-[11px] font-medium text-slate-500">Sin visitas</span>
+                        <span className="text-[10px]">Doble clic para programar</span>
+                      </div>
+                    ) : (
+                      dayVisits.map((v) => renderChip(v, day.dateString, dayVisits, false))
+                    )}
+                  </div>
                 </div>
-
-                {/* Bottom Row: Day indicator badges */}
-                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100/60">
-                  {count > 0 ? (
-                    <span className="text-[10px] font-semibold text-slate-500">
-                      {count === 1 ? '1 visita' : `${count} visitas`}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-slate-300">Vacío</span>
-                  )}
-
-                  {hasSales && (
-                    <span className="font-bold text-emerald-600 text-[10px]" title="Venta cerrada">
-                      €
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Legend & Instructions helper */}
-      <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[11px]">
-              3
-            </span>
-            <span className="font-medium text-slate-700">Número de visitas en ese día</span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="w-5 h-5 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[11px]">
-              ✓
-            </span>
-            <span>Todas completadas</span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 rounded text-[10px] font-bold flex items-center gap-1">
-              <span>⋮⋮</span>
-              <span>Arrastrable</span>
-            </span>
-          </div>
+      {draggedVisit && (
+        <div className="text-center text-xs text-blue-700">
+          Suelta la visita sobre otro día para reprogramarla.
         </div>
+      )}
 
-        <div className="text-slate-500 text-right text-[11px]">
-          <span>💡 <strong>Arrastrar y Soltar:</strong> Arrastra cualquier cajita de visita con el ratón hacia otro día para reprogramarla al instante.</span>
+      {monthStats.monthTotalVisits > 0 && viewMode === 'month' && (
+        <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500 px-1">
+          <span>
+            <strong className="text-slate-700">{monthStats.monthTotalVisits}</strong> visitas en {MONTH_NAMES_ES[currentMonth]}
+          </span>
+          <span>
+            <strong className="text-emerald-700">{monthStats.monthCompletedVisits}</strong> completadas
+          </span>
+          <span>
+            <strong className="text-slate-700">{monthStats.daysWithVisits}</strong> días con actividad
+          </span>
+          <span className="ml-auto">Doble clic en un día para ver o programar · Arrastra una visita para moverla</span>
         </div>
-      </div>
+      )}
     </div>
   );
+
 };

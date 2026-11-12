@@ -8,11 +8,6 @@ import { SalesRep, Client, Visit, VisitOutcome, Coordinates, Article, Sale } fro
 import { INITIAL_SALES_REPS, INITIAL_CLIENTS, INITIAL_VISITS } from './data/initialData';
 import { INITIAL_ARTICLES } from './data/initialArticles';
 import { INITIAL_SALES } from './data/initialSales';
-import { MapView } from './components/MapView';
-import { LiveTrackerControls } from './components/LiveTrackerControls';
-import { RepDashboardView } from './components/RepDashboardView';
-import { SupervisorDashboardView } from './components/SupervisorDashboardView';
-import { EmployeesView } from './components/EmployeesView';
 import { ClientsCrmView } from './components/ClientsCrmView';
 import { ArticlesView } from './components/ArticlesView';
 import { SalesView } from './components/SalesView';
@@ -29,6 +24,9 @@ import { VisitsHistoryModal } from './components/VisitsHistoryModal';
 import { ClientDetailDrawer } from './components/ClientDetailDrawer';
 import { SupabaseSyncModal } from './components/SupabaseSyncModal';
 import { MonthlyVisitsCalendar } from './components/MonthlyVisitsCalendar';
+import { ZoneSalesView } from './components/ZoneSalesView';
+import { VisitsHistoryView } from './components/VisitsHistoryView';
+import { ComercialesView } from './components/ComercialesView';
 import { DayVisitsModal } from './components/DayVisitsModal';
 import { ClientSalesHistoryModal } from './components/ClientSalesHistoryModal';
 import { calculateDistanceMeters, calculateBearing, safeCoords, isValidCoordinate } from './utils/geoUtils';
@@ -52,7 +50,7 @@ import {
   SupabaseSyncState,
 } from './lib/supabase';
 
-type ActiveTab = 'map' | 'rep_view' | 'calendar' | 'supervisor' | 'employees' | 'clients' | 'articles' | 'sales';
+type ActiveTab = 'calendar' | 'zone_sales' | 'sales' | 'articles' | 'clients' | 'employees' | 'history';
 
 export default function App() {
   // Persistence with localStorage fallback and automatic corrupt-data healing
@@ -126,7 +124,7 @@ export default function App() {
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Navigation & Selection states
-  const [activeTab, setActiveTab] = useState<ActiveTab>('map');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('calendar');
   const [selectedRepId, setSelectedRepId] = useState<string>(INITIAL_SALES_REPS[0].id);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isClientDrawerOpen, setIsClientDrawerOpen] = useState<boolean>(false);
@@ -138,6 +136,7 @@ export default function App() {
   const [newVisitInitialDate, setNewVisitInitialDate] = useState<string | undefined>(undefined);
   const [isNewEmployeeModalOpen, setIsNewEmployeeModalOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [historyRepFilter, setHistoryRepFilter] = useState<string | null>(null);
   const [pickedMapCoords, setPickedMapCoords] = useState<Coordinates | null>(null);
 
   // Calendar Day Visits Modal state
@@ -1084,435 +1083,133 @@ export default function App() {
     setIsClientDrawerOpen(true);
   };
 
+  const NAV_ITEMS: { id: ActiveTab; label: string; short: string }[] = [
+    { id: 'calendar', label: 'Calendario', short: 'Calendario' },
+    { id: 'zone_sales', label: 'Ventas por Zona', short: 'Ventas Zona' },
+    { id: 'sales', label: 'Ventas', short: 'Ventas' },
+    { id: 'articles', label: 'Artículos & Stock', short: 'Artículos' },
+    { id: 'clients', label: 'Clientes CRM', short: 'Clientes' },
+    { id: 'employees', label: 'Comerciales', short: 'Equipo' },
+    { id: 'history', label: 'Histórico Visitas', short: 'Histórico' },
+  ];
+
+  const goTo = (tab: ActiveTab) => {
+    sound.playClick();
+    setActiveTab(tab);
+    window.scrollTo({ top: 0 });
+  };
+
+  const activeRepIsSupervisor = /supervis|jefe|director|manager/i.test(activeRep?.roleTitle || '');
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
-      {/* TOP BAR CONTRACT:
-          Zone 1: Brand Wordmark (one line)
-          Zone 2: 4-5 Nav links (single line)
-          Zone 3: 1 Primary action */}
-      <header className="flex items-center justify-between gap-6 px-6 py-3.5 bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
-        {/* Zone 1: Brand Wordmark */}
-        <div className="flex items-center gap-3 whitespace-nowrap shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-center overflow-hidden p-0.5 hover:shadow-sm transition-shadow">
-            <img 
-              src="/assets/aistudio/geo-logo-design-inspiration-for-a-unique-identity-modern-elegance-and-creative-design-watermark-your-success-with-the-striking-this-logo-vector_47d08a1d.jpg" 
-              alt="GEO Logo" 
-              className="w-full h-full object-contain rounded-lg"
-            />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-bold tracking-tight text-slate-900 leading-tight">
-              GeoVentas
-            </span>
-            <span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">
-              GPS Tracking & CRM
-            </span>
-          </div>
-        </div>
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="h-[60px] flex items-center gap-6">
+            {/* Brand */}
+            <button
+              onClick={() => goTo('calendar')}
+              className="flex items-center gap-2.5 text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 hover:text-blue-600 transition-colors"
+            >
+              <span className="w-8 h-8 rounded-lg bg-blue-600 text-white text-xs font-bold flex items-center justify-center">GV</span>
+              <span>GeoVentas</span>
+            </button>
 
-        {/* Zone 2: Navigation Links */}
-        <nav className="hidden md:flex items-center gap-3.5 lg:gap-5 text-sm font-semibold text-slate-600 overflow-x-auto scrollbar-none py-1">
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('map');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 ${
-              activeTab === 'map' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            Mapa en Vivo
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('rep_view');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 ${
-              activeTab === 'rep_view' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            Ruta Vendedor
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('calendar');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
-              activeTab === 'calendar' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            <span>Calendario</span>
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
-              {visits.length}
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('supervisor');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 ${
-              activeTab === 'supervisor' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            Supervisión
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('employees');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 ${
-              activeTab === 'employees' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            Vendedores
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('clients');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 ${
-              activeTab === 'clients' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            Clientes CRM
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('articles');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
-              activeTab === 'articles' ? 'text-blue-600 font-bold' : 'hover:text-slate-900'
-            }`}
-          >
-            <span>Artículos</span>
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-              {articles.length}
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('sales');
-            }}
-            className={`transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
-              activeTab === 'sales' ? 'text-blue-600 font-bold border-b-2 border-blue-600 pb-0.5' : 'hover:text-slate-900'
-            }`}
-          >
-            <span className="flex items-center gap-1">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="1" x2="12" y2="23"/>
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-              </svg>
-              <span>Ventas</span>
-            </span>
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">
-              {sales.length}
-            </span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setIsHistoryOpen(true);
-            }}
-            className="hover:text-slate-900 transition-colors whitespace-nowrap shrink-0"
-          >
-            Auditoría GPS
-          </button>
-        </nav>
+            {/* Nav */}
+            <nav className="hidden lg:flex items-center gap-5 text-sm font-medium overflow-x-auto scrollbar-none">
+              {NAV_ITEMS.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setHistoryRepFilter(null);
+                    goTo(item.id);
+                  }}
+                  className={`whitespace-nowrap shrink-0 pb-1 border-b-2 transition-colors cursor-pointer ${
+                    activeTab === item.id
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
 
-        {/* Zone 3: 1 Primary Action */}
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => {
-              sound.playClick();
-              setPickedMapCoords(null);
-              setIsNewVisitOpen(true);
-            }}
-            className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm transition-all whitespace-nowrap shrink-0 flex items-center gap-1.5"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>+ Nueva Visita</span>
-          </button>
+            {/* Right actions */}
+            <div className="ml-auto flex items-center gap-2.5 shrink-0">
+              <label className="relative hidden sm:flex items-center gap-2 pl-2.5 pr-2 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="flex flex-col leading-tight">
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                    {activeRepIsSupervisor ? 'Supervisor' : 'Comercial'}
+                  </span>
+                  <span className="text-xs font-semibold text-slate-900 max-w-[150px] truncate">{activeRep?.name}</span>
+                </span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500"><polyline points="6 9 12 15 18 9"/></svg>
+                <select
+                  value={selectedRepId}
+                  onChange={(e) => {
+                    sound.playClick();
+                    setSelectedRepId(e.target.value);
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  aria-label="Usuario activo"
+                >
+                  {salesReps.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} — {r.territory}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                onClick={() => {
+                  sound.playClick();
+                  setIsSupabaseModalOpen(true);
+                }}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-medium text-slate-700"
+                title="Estado de conexión con Supabase"
+              >
+                <span className={`w-2 h-2 rounded-full ${supabaseState.isConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                Supabase
+              </button>
+
+              <button
+                onClick={() => {
+                  sound.playClick();
+                  setPickedMapCoords(null);
+                  setIsNewVisitOpen(true);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                Nueva Visita
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile / tablet nav */}
+          <nav className="lg:hidden flex items-center gap-4 text-sm font-medium overflow-x-auto scrollbar-none pb-2 -mt-1">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                    setHistoryRepFilter(null);
+                    goTo(item.id);
+                  }}
+                className={`whitespace-nowrap shrink-0 pb-1 border-b-2 ${
+                  activeTab === item.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-600'
+                }`}
+              >
+                {item.short}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
-      {/* SUB-HEADER / CONTEXT TOOLBAR & SUPABASE STATUS */}
-      <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
-        {/* Mobile Tab Switcher */}
-        <div className="flex md:hidden items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('map');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'map' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            Mapa
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('rep_view');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'rep_view' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            Ruta
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('calendar');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'calendar' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            Calendario
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('supervisor');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'supervisor' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            Flota
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('employees');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'employees' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            Vendedores
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('clients');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'clients' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            CRM
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('articles');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold ${activeTab === 'articles' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
-          >
-            Artículos
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setActiveTab('sales');
-            }}
-            className={`px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1 shrink-0 ${
-              activeTab === 'sales' ? 'bg-blue-600 text-white shadow-xs font-bold' : 'text-slate-600'
-            }`}
-          >
-            <span>Ventas</span>
-            <span className={`text-[9px] px-1 py-0.2 rounded-full font-bold ${activeTab === 'sales' ? 'bg-white text-blue-800' : 'bg-slate-200 text-slate-700'}`}>
-              {sales.length}
-            </span>
-          </button>
-        </div>
-
-        {/* Rep Selector & Map Modes */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-500 font-medium">Vendedor Activo:</span>
-            <select
-              value={selectedRepId}
-              onChange={(e) => {
-                sound.playClick();
-                setSelectedRepId(e.target.value);
-              }}
-              className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-1 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {salesReps.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} — {r.territory}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <label className="hidden sm:flex items-center gap-1.5 cursor-pointer text-slate-600 select-none">
-            <input
-              type="checkbox"
-              checked={showAllRepsOnMap}
-              onChange={(e) => {
-                sound.playClick();
-                setShowAllRepsOnMap(e.target.checked);
-              }}
-              className="rounded text-blue-600 focus:ring-blue-500"
-            />
-            <span>Mostrar toda la flota en mapa</span>
-          </label>
-        </div>
-
-        {/* Supabase status indicator & actions */}
-        <div className="flex items-center gap-3 ml-auto">
-          {/* Quick CRM Client action if on clients tab */}
-          {activeTab === 'clients' ? (
-            <button
-              onClick={() => {
-                sound.playClick();
-                setClientToEdit(null);
-                setIsEditClientModalOpen(true);
-              }}
-              className="text-blue-600 hover:text-blue-800 font-bold transition-colors flex items-center gap-1"
-            >
-              <span>+ Nuevo Cliente CRM</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                sound.playClick();
-                setIsNewEmployeeModalOpen(true);
-              }}
-              className="text-blue-600 hover:text-blue-800 font-bold transition-colors flex items-center gap-1"
-            >
-              <span>+ Alta Vendedor</span>
-            </button>
-          )}
-
-          <span className="text-slate-300">|</span>
-
-          {/* Supabase connection badge */}
-          <button
-            onClick={() => {
-              sound.playClick();
-              setIsSupabaseModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-700 font-medium"
-            title="Ver estado de conexión con Supabase"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                supabaseState.isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`}
-            />
-            <span>{supabaseState.isConnected ? 'Supabase Conectado' : 'Supabase (Configurar)'}</span>
-          </button>
-
-          <span className="text-slate-300">|</span>
-          <button
-            onClick={handleResetData}
-            className="text-slate-400 hover:text-slate-600 transition-colors"
-            title="Restablece los datos de demostración"
-          >
-            Restablecer demo
-          </button>
-        </div>
-      </div>
-
-      {/* MAIN VIEWPORT */}
-      <main className="flex-1 p-4 md:p-6 max-w-7xl w-full mx-auto space-y-6">
-        {/* VIEW 1: MAPA EN VIVO */}
-        {activeTab === 'map' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            <div className="lg:col-span-7 space-y-4">
-              <MapView
-                salesReps={salesReps}
-                clients={clients}
-                visits={visits}
-                selectedRepId={selectedRepId}
-                selectedClientId={selectedClientId}
-                onSelectClient={handleSelectClient}
-                onSelectRep={(rId) => setSelectedRepId(rId)}
-                onInitiateCheckIn={(visit) => setActiveModalVisit(visit)}
-                onMapClickCoordinate={(coords) => {
-                  setPickedMapCoords(coords);
-                  setIsNewVisitOpen(true);
-                }}
-                showAllReps={showAllRepsOnMap}
-              />
-
-              <LiveTrackerControls
-                activeRep={activeRep}
-                clients={clients}
-                visits={visits}
-                onUpdateRepCoords={(coords, speed) => updateRepCoordinates(selectedRepId, coords, speed)}
-                isRealGpsActive={isRealGpsActive}
-                onToggleRealGps={toggleRealGps}
-                onStepSimulation={stepSimulation}
-                isSimulating={isSimulating}
-                onToggleSimulation={toggleSimulation}
-                simulationSpeed={simulationSpeed}
-                onChangeSimulationSpeed={handleChangeSimulationSpeed}
-                gpsAccuracy={gpsAccuracy}
-                gpsError={gpsError}
-                onInitiateCheckIn={(visit) => setActiveModalVisit(visit)}
-              />
-            </div>
-
-            <div className="lg:col-span-5">
-              <RepDashboardView
-                rep={activeRep}
-                clients={clients}
-                visits={visits}
-                onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
-                onSelectClient={handleSelectClient}
-                onEditVisit={(visit) => {
-                  setVisitToEdit(visit);
-                  setIsEditVisitModalOpen(true);
-                }}
-                onDeleteVisit={handleDeleteVisit}
-                onDeleteMultipleVisits={handleDeleteMultipleVisits}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* VIEW 2: RUTA VENDEDOR */}
-        {activeTab === 'rep_view' && (
-          <div className="max-w-3xl mx-auto space-y-4">
-            <LiveTrackerControls
-              activeRep={activeRep}
-              clients={clients}
-              visits={visits}
-              onUpdateRepCoords={(coords, speed) => updateRepCoordinates(selectedRepId, coords, speed)}
-              isRealGpsActive={isRealGpsActive}
-              onToggleRealGps={toggleRealGps}
-              onStepSimulation={stepSimulation}
-              isSimulating={isSimulating}
-              onToggleSimulation={toggleSimulation}
-              simulationSpeed={simulationSpeed}
-              onChangeSimulationSpeed={handleChangeSimulationSpeed}
-              gpsAccuracy={gpsAccuracy}
-              gpsError={gpsError}
-              onInitiateCheckIn={(visit) => setActiveModalVisit(visit)}
-            />
-
-            <RepDashboardView
-              rep={activeRep}
-              clients={clients}
-              visits={visits}
-              onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
-              onSelectClient={handleSelectClient}
-              onEditVisit={(visit) => {
-                setVisitToEdit(visit);
-                setIsEditVisitModalOpen(true);
-              }}
-              onDeleteVisit={handleDeleteVisit}
-              onDeleteMultipleVisits={handleDeleteMultipleVisits}
-            />
-          </div>
-        )}
-
-        {/* VIEW: CALENDARIO MENSUAL DE VISITAS */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
         {activeTab === 'calendar' && (
           <MonthlyVisitsCalendar
             visits={visits}
@@ -1530,73 +1227,66 @@ export default function App() {
             onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
             onSelectClientAndGoToMap={(clientId) => {
               setSelectedClientId(clientId);
-              setActiveTab('map');
+              setActiveTab('zone_sales');
             }}
             onOpenClientSales={handleOpenClientSalesModal}
           />
         )}
 
-        {/* VIEW 3: SUPERVISIÓN */}
-        {activeTab === 'supervisor' && (
-          <div className="space-y-6">
-            <SupervisorDashboardView
-              salesReps={salesReps}
-              clients={clients}
-              visits={visits}
-              selectedRepId={selectedRepId}
-              onSelectRep={(repId) => {
-                setSelectedRepId(repId);
-                setActiveTab('map');
-              }}
-              onSelectClient={handleSelectClient}
-              onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
-              onEditEmployee={(rep) => {
-                setEmployeeToEdit(rep);
-                setIsEditEmployeeModalOpen(true);
-              }}
-              onDeleteEmployee={handleDeleteEmployee}
-              onDeleteMultipleEmployees={handleDeleteMultipleEmployees}
-            />
-
-            <div className="h-[460px]">
-              <MapView
-                salesReps={salesReps}
-                clients={clients}
-                visits={visits}
-                selectedRepId={selectedRepId}
-                selectedClientId={selectedClientId}
-                onSelectClient={handleSelectClient}
-                onSelectRep={(rId) => setSelectedRepId(rId)}
-                onInitiateCheckIn={(visit) => setActiveModalVisit(visit)}
-                showAllReps={true}
-              />
-            </div>
-          </div>
+        {activeTab === 'zone_sales' && activeRep && (
+          <ZoneSalesView
+            clients={clients}
+            sales={sales}
+            visits={visits}
+            activeRep={activeRep}
+            onOpenClientSales={handleOpenClientSalesModal}
+            onViewClient={handleSelectClient}
+            onOpenCheckIn={(visit) => setActiveModalVisit(visit)}
+            onLocateMe={() => {
+              if (!isRealGpsActive) toggleRealGps();
+            }}
+          />
         )}
 
-        {/* VIEW 4: VENDEDORES */}
         {activeTab === 'employees' && (
-          <EmployeesView
+          <ComercialesView
             salesReps={salesReps}
             visits={visits}
+            sales={sales}
             onOpenNewEmployeeModal={() => setIsNewEmployeeModalOpen(true)}
             onEditEmployee={(rep) => {
               setEmployeeToEdit(rep);
               setIsEditEmployeeModalOpen(true);
             }}
-            onSelectRepAndGoToMap={(repId) => {
-              setSelectedRepId(repId);
-              setActiveTab('map');
-            }}
-            onSelectRepAndGoToRoute={(repId) => {
-              setSelectedRepId(repId);
-              setActiveTab('rep_view');
+            onViewVisits={(repId) => {
+              setHistoryRepFilter(repId);
+              goTo('history');
             }}
             onDeleteEmployee={handleDeleteEmployee}
             onDeleteMultipleEmployees={handleDeleteMultipleEmployees}
-            onScheduleVisitForRep={(repId) => {
-              setSelectedRepId(repId);
+            onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
+          />
+        )}
+
+        {activeTab === 'history' && (
+          <VisitsHistoryView
+            key={historyRepFilter || 'all'}
+            initialRepId={historyRepFilter || undefined}
+            visits={visits}
+            clients={clients}
+            salesReps={salesReps}
+            onNewVisit={() => {
+              setPickedMapCoords(null);
               setIsNewVisitOpen(true);
+            }}
+            onEditVisit={(visit) => {
+              setVisitToEdit(visit);
+              setIsEditVisitModalOpen(true);
+            }}
+            onDeleteVisit={handleDeleteVisit}
+            onDeleteMultipleVisits={handleDeleteMultipleVisits}
+            onOpenDetail={(visit, client) => {
+              if (client) handleOpenClientSalesModal(client, visit);
             }}
           />
         )}
@@ -1617,7 +1307,7 @@ export default function App() {
             }}
             onSelectClientAndGoToMap={(clientId) => {
               setSelectedClientId(clientId);
-              setActiveTab('map');
+              setActiveTab('zone_sales');
             }}
             onScheduleVisitForClient={(clientId) => {
               setSelectedClientId(clientId);
@@ -1778,7 +1468,7 @@ export default function App() {
           onOpenCheckInModal={(visit) => setActiveModalVisit(visit)}
           onSelectClientAndGoToMap={(clientId) => {
             setSelectedClientId(clientId);
-            setActiveTab('map');
+            setActiveTab('zone_sales');
           }}
           onOpenClientSales={handleOpenClientSalesModal}
         />
@@ -1900,41 +1590,37 @@ export default function App() {
         />
       )}
 
-      {/* FOOTER */}
-      <footer className="border-t border-slate-200 bg-white py-4 px-6 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 mt-auto">
-        <div className="flex items-center gap-2.5">
-          <img 
-            src="/assets/aistudio/geo-logo-design-inspiration-for-a-unique-identity-modern-elegance-and-creative-design-watermark-your-success-with-the-striking-this-logo-vector_47d08a1d.jpg" 
-            alt="GEO Logo" 
-            className="w-5 h-5 rounded-full object-cover border border-slate-200"
-          />
-          <p>© 2026 GeoVentas · Conectado con Supabase PostgreSQL</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => {
-              sound.playClick();
-              setIsSupabaseModalOpen(true);
-            }}
-            className="hover:text-slate-800 transition-colors font-semibold flex items-center gap-1.5"
-          >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                supabaseState.isConnected ? 'bg-emerald-500' : 'bg-amber-500'
-              }`}
-            />
-            <span>Estado Supabase</span>
-          </button>
-          <span>·</span>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setIsHistoryOpen(true);
-            }}
-            className="hover:text-slate-800 transition-colors font-semibold"
-          >
-            Descargar Reporte CSV
-          </button>
+      <footer className="border-t border-slate-200 bg-white mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            <span className="font-semibold text-slate-700">GeoVentas</span>
+            <span className="text-slate-300">·</span>
+            <span>Gestión de Visitas & Geolocalización de Comerciales</span>
+            <span className="text-slate-300">·</span>
+            <span className="flex items-center gap-1 text-emerald-600">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              Geocercas activas
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                sound.playClick();
+                setIsSupabaseModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 hover:text-slate-800"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-emerald-600"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/></svg>
+              Supabase:{' '}
+              <span className={supabaseState.isConnected ? 'text-emerald-600 font-semibold' : 'text-amber-600 font-semibold'}>
+                {supabaseState.isConnected ? 'En línea' : 'Sin configurar'}
+              </span>
+            </button>
+            <span className="text-slate-300">·</span>
+            <button onClick={handleResetData} className="hover:text-slate-800">
+              Reiniciar datos demo
+            </button>
+          </div>
         </div>
       </footer>
     </div>
