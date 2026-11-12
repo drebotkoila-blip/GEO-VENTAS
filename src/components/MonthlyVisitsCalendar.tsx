@@ -579,7 +579,7 @@ export const MonthlyVisitsCalendar: React.FC<MonthlyVisitsCalendarProps> = ({
                             sound.playClick();
                             onOpenDayVisits(cell.dateString, dayVisits);
                           }}
-                          className="w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center"
+                          className="min-w-4 h-4 px-1 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center"
                           title={`${count} visita(s)`}
                         >
                           {count}
