@@ -95,7 +95,8 @@ export const ComercialesView: React.FC<ComercialesViewProps> = ({
   });
 
   const supCount = rows.filter((r) => r.supervisor).length;
-  const totalSales = rows.reduce((a, r) => a + r.total, 0);
+  const totalSales =
+    sales.reduce((a, s) => a + (Number(s.importe) || 0), 0) + visits.reduce((a, v) => a + (v.saleAmount || 0), 0);
   const visitsToday = rows.reduce((a, r) => a + r.visitsToday, 0);
   const completedToday = rows.reduce((a, r) => a + r.completedToday, 0);
   const managedClients = new Set(visits.map((v) => v.clientId)).size;

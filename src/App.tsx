@@ -1105,7 +1105,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="h-[60px] flex items-center gap-6">
+          <div className="h-[60px] flex items-center gap-5">
             {/* Brand */}
             <button
               onClick={() => goTo('calendar')}
@@ -1116,7 +1116,7 @@ export default function App() {
             </button>
 
             {/* Nav */}
-            <nav className="hidden lg:flex items-center gap-5 text-sm font-medium overflow-x-auto scrollbar-none">
+            <nav className="hidden lg:flex items-center gap-4 xl:gap-5 text-[13px] xl:text-sm font-medium min-w-0">
               {NAV_ITEMS.map((item) => (
                 <button
                   key={item.id}
