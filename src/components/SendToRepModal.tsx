@@ -22,9 +22,10 @@ interface SendToRepModalProps {
   onClose: () => void;
 }
 
-type Period = 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'custom';
+type Period = 'upcoming' | 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'custom';
 
 const PERIODS: { id: Period; label: string }[] = [
+  { id: 'upcoming', label: 'Próximas' },
   { id: 'today', label: 'Hoy' },
   { id: 'tomorrow', label: 'Mañana' },
   { id: 'week', label: 'Esta semana' },
@@ -60,6 +61,8 @@ const slug = (s: string) =>
 function rangeFor(p: Period, from: string, to: string): [string, string] {
   const now = new Date();
   switch (p) {
+    case 'upcoming':
+      return [toYmd(now), '9999-12-31'];
     case 'today':
       return [toYmd(now), toYmd(now)];
     case 'tomorrow': {
@@ -99,6 +102,14 @@ const mapsLink = (c?: Client) => {
   return q ? `https://maps.google.com/?q=${encodeURIComponent(q)}` : '';
 };
 
+const Icon = {
+  phone: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>,
+  mail: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>,
+  download: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>,
+  file: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>,
+  wa: <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.2 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-3.3-.8-2.8-1.1-4.6-4-4.7-4.1-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.3 0 .5l-.3.5-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.1 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 1c.3.1.5.2.5.3.1.1.1.7-.1 1.3Z"/></svg>,
+};
+
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function downloadFile(file: File) {
@@ -114,7 +125,7 @@ function downloadFile(file: File) {
 
 export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clients, visits, initialRepId, onClose }) => {
   const [repId, setRepId] = useState(initialRepId || salesReps[0]?.id || '');
-  const [period, setPeriod] = useState<Period>('week');
+  const [period, setPeriod] = useState<Period>('upcoming');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [onlyPending, setOnlyPending] = useState(true);
@@ -128,6 +139,18 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
   const [from, to] = rangeFor(period, customFrom, customTo);
 
+  const countFor = (p: Period) => {
+    const [f, t] = rangeFor(p, customFrom, customTo);
+    return visits.filter(
+      (v) =>
+        v.repId === repId &&
+        v.scheduledDate >= f &&
+        v.scheduledDate <= t &&
+        (!onlyPending || v.status === 'scheduled' || v.status === 'in_progress')
+    ).length;
+  };
+  const totalRepVisits = visits.filter((v) => v.repId === repId).length;
+
   const repVisits = useMemo(
     () =>
       visits
@@ -138,15 +161,17 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     [visits, repId, from, to, onlyPending]
   );
 
+  const phoneOk = waPhone(rep?.phone).length >= 11;
   const firstName = (rep?.name || '').split(/[\s,]+/).filter(Boolean)[0] || '';
-  const rangeLabel = from === to ? `del ${fmtDate(from)}` : `del ${fmtDate(from)} al ${fmtDate(to)}`;
-  const excelName = `Visitas_${slug(rep?.name || 'comercial')}_${from}${from !== to ? '_a_' + to : ''}.xlsx`;
+  const rangeLabel =
+    period === 'upcoming' ? 'próximas' : from === to ? `del ${fmtDate(from)}` : `del ${fmtDate(from)} al ${fmtDate(to)}`;
+  const excelName = `Visitas_${slug(rep?.name || 'comercial')}_${period === 'upcoming' ? 'proximas_' + from : from + (from !== to ? '_a_' + to : '')}.xlsx`;
 
   // ---------- Mensaje de texto ----------
   const MAX_LINES = 40;
   const message = useMemo(() => {
     const lines: string[] = [];
-    lines.push(`Hola ${firstName}, te envío tus visitas ${rangeLabel} (${repVisits.length}):`);
+    lines.push(`Hola ${firstName}, te envío tus ${period === 'upcoming' ? 'próximas visitas' : 'visitas ' + rangeLabel} (${repVisits.length}):`);
     lines.push('');
     repVisits.slice(0, MAX_LINES).forEach((v, i) => {
       const c = clientById.get(v.clientId);
@@ -209,7 +234,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     const resumen = XLSX.utils.aoa_to_sheet([
       ['Comercial', rep?.name || ''],
       ['Territorio', rep?.territory || ''],
-      ['Periodo', from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`],
+      ['Periodo', period === 'upcoming' ? `Desde ${fmtDate(from)}` : from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`],
       ['Visitas', repVisits.length],
       ['Filtro', onlyPending ? 'Solo pendientes / en curso' : 'Todas'],
       ['Generado', new Date().toLocaleString('es-ES')],
@@ -258,13 +283,13 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     sound.playClick();
     filesToSend().forEach(downloadFile);
     const phone = waPhone(rep?.phone);
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    const url = `https://wa.me/${phoneOk ? phone : ''}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank', 'noopener');
     setFeedback({
-      type: phone ? 'ok' : 'warn',
-      text: phone
+      type: phoneOk ? 'ok' : 'warn',
+      text: phoneOk
         ? 'WhatsApp abierto con el listado. Arrastra el Excel descargado al chat para adjuntarlo.'
-        : 'El comercial no tiene teléfono: elige el contacto en WhatsApp y adjunta el Excel descargado.',
+        : 'El teléfono del comercial falta o está incompleto: elige el contacto en WhatsApp y adjunta el Excel descargado.',
     });
   };
 
@@ -328,8 +353,12 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
               </select>
               {rep && (
                 <div className="mt-1.5 text-[11px] text-slate-500 flex flex-wrap gap-x-3">
-                  <span className={rep.phone ? '' : 'text-amber-600'}>📱 {rep.phone || 'sin teléfono'}</span>
-                  <span className={rep.email ? '' : 'text-amber-600'}>✉️ {rep.email || 'sin email'}</span>
+                  <span className={`inline-flex items-center gap-1 ${phoneOk ? '' : 'text-amber-600 font-semibold'}`}>
+                    {Icon.phone} {rep.phone || 'sin teléfono'}{rep.phone && !phoneOk ? ' (incompleto)' : ''}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 ${rep.email ? '' : 'text-amber-600 font-semibold'}`}>
+                    {Icon.mail} {rep.email || 'sin email'}
+                  </span>
                 </div>
               )}
             </div>
@@ -346,6 +375,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
                     }`}
                   >
                     {p.label}
+                    {p.id !== 'custom' && <span className="ml-1 opacity-70 font-mono">{countFor(p.id)}</span>}
                   </button>
                 ))}
               </div>
@@ -354,6 +384,13 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
                   <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className={fieldCls} />
                   <span className="text-slate-400">→</span>
                   <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className={fieldCls} />
+                </div>
+              )}
+              {repVisits.length === 0 && (
+                <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
+                  {totalRepVisits === 0
+                    ? `${rep?.name || 'Este comercial'} no tiene ninguna visita asignada. Créala desde "+ Nueva Visita" y vuelve aquí.`
+                    : 'No hay visitas en este periodo. Prueba otro periodo o desmarca "Solo pendientes".'}
                 </div>
               )}
               <label className="flex items-center gap-2 mt-2 text-xs text-slate-600 cursor-pointer">
@@ -371,7 +408,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
               <div className="mt-2 space-y-1.5">
                 {extraFiles.map((f, i) => (
                   <div key={i} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs">
-                    <span className="truncate text-emerald-800 font-medium">📄 {f.name}</span>
+                    <span className="truncate text-emerald-800 font-medium inline-flex items-center gap-1.5">{Icon.file} {f.name}</span>
                     <button onClick={() => setExtraFiles((p) => p.filter((_, j) => j !== i))} className="text-emerald-700 hover:text-red-600 font-bold">✕</button>
                   </div>
                 ))}
@@ -432,15 +469,15 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
 
         {/* Acciones */}
         <div className="px-5 py-4 border-t border-slate-200 mt-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-          <button onClick={downloadOnly} className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-            ⬇ Descargar Excel
+          <button onClick={downloadOnly} className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5">
+            {Icon.download} Descargar Excel
           </button>
           <div className="flex flex-col sm:flex-row gap-2">
-            <button onClick={sendEmail} className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              ✉️ Email
+            <button onClick={sendEmail} className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5">
+              {Icon.mail} Email
             </button>
-            <button onClick={sendWhatsApp} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">
-              WhatsApp
+            <button onClick={sendWhatsApp} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5">
+              {Icon.wa} WhatsApp
             </button>
             <button onClick={shareNative} className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">
               Compartir con Excel adjunto
