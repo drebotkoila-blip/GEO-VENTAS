@@ -9,6 +9,7 @@ interface ComercialesViewProps {
   onOpenNewEmployeeModal: () => void;
   onEditEmployee: (rep: SalesRep) => void;
   onViewVisits: (repId: string) => void;
+  onSendToRep: (repId: string) => void;
   onDeleteEmployee: (repId: string) => void;
   onDeleteMultipleEmployees: (repIds: string[]) => void;
   onOpenSupabaseModal: () => void;
@@ -44,6 +45,7 @@ export const ComercialesView: React.FC<ComercialesViewProps> = ({
   onOpenNewEmployeeModal,
   onEditEmployee,
   onViewVisits,
+  onSendToRep,
   onDeleteEmployee,
   onDeleteMultipleEmployees,
   onOpenSupabaseModal,
@@ -268,6 +270,13 @@ export const ComercialesView: React.FC<ComercialesViewProps> = ({
                       </button>
                       <button onClick={() => onViewVisits(r.id)} className="px-2 py-1 rounded-md border border-slate-200 hover:bg-slate-50 font-semibold text-slate-700">
                         Visitas
+                      </button>
+                      <button
+                        onClick={() => onSendToRep(r.id)}
+                        title="Enviar visitas y Excel"
+                        className="px-2 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                      >
+                        Enviar
                       </button>
                       <button
                         onClick={() => {

@@ -29,6 +29,7 @@ import { VisitsHistoryView } from './components/VisitsHistoryView';
 import { ComercialesView } from './components/ComercialesView';
 import { DayVisitsModal } from './components/DayVisitsModal';
 import { ClientSalesHistoryModal } from './components/ClientSalesHistoryModal';
+import { SendToRepModal } from './components/SendToRepModal';
 import { calculateDistanceMeters, calculateBearing, safeCoords, isValidCoordinate } from './utils/geoUtils';
 import { sound } from './utils/audioFeedback';
 import {
@@ -136,6 +137,13 @@ export default function App() {
   const [newVisitInitialDate, setNewVisitInitialDate] = useState<string | undefined>(undefined);
   const [isNewEmployeeModalOpen, setIsNewEmployeeModalOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  // Enviar visitas + Excel a comercial
+  const [sendToRepId, setSendToRepId] = useState<string | null>(null);
+  const [isSendToRepOpen, setIsSendToRepOpen] = useState<boolean>(false);
+  const openSendToRep = (repId?: string) => {
+    setSendToRepId(repId || null);
+    setIsSendToRepOpen(true);
+  };
   const [historyRepFilter, setHistoryRepFilter] = useState<string | null>(null);
   const [pickedMapCoords, setPickedMapCoords] = useState<Coordinates | null>(null);
 
@@ -1262,6 +1270,7 @@ export default function App() {
               setHistoryRepFilter(repId);
               goTo('history');
             }}
+            onSendToRep={(repId) => openSendToRep(repId)}
             onDeleteEmployee={handleDeleteEmployee}
             onDeleteMultipleEmployees={handleDeleteMultipleEmployees}
             onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
@@ -1288,6 +1297,7 @@ export default function App() {
             onOpenDetail={(visit, client) => {
               if (client) handleOpenClientSalesModal(client, visit);
             }}
+            onSendToRep={openSendToRep}
           />
         )}
 
@@ -1572,6 +1582,17 @@ export default function App() {
             setVisitToEdit(null);
           }}
           onSaveVisit={handleSaveVisit}
+        />
+      )}
+
+      {/* 11. Enviar visitas y Excel a comercial */}
+      {isSendToRepOpen && (
+        <SendToRepModal
+          salesReps={salesReps}
+          clients={clients}
+          visits={visits}
+          initialRepId={sendToRepId || undefined}
+          onClose={() => setIsSendToRepOpen(false)}
         />
       )}
 

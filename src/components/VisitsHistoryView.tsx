@@ -12,6 +12,7 @@ interface VisitsHistoryViewProps {
   onDeleteVisit: (visitId: string) => void;
   onDeleteMultipleVisits: (visitIds: string[]) => void;
   onOpenDetail: (visit: Visit, client?: Client) => void;
+  onSendToRep?: (repId?: string) => void;
   initialRepId?: string;
 }
 
@@ -87,6 +88,7 @@ export const VisitsHistoryView: React.FC<VisitsHistoryViewProps> = ({
   onDeleteVisit,
   onDeleteMultipleVisits,
   onOpenDetail,
+  onSendToRep,
   initialRepId,
 }) => {
   const [period, setPeriod] = useState<Period>('all');
@@ -207,6 +209,17 @@ export const VisitsHistoryView: React.FC<VisitsHistoryViewProps> = ({
               Tarjetas
             </button>
           </div>
+          {onSendToRep && (
+            <button
+              onClick={() => {
+                sound.playClick();
+                onSendToRep(repFilter !== 'all' ? repFilter : undefined);
+              }}
+              className="px-2.5 py-1.5 border border-blue-200 bg-blue-50 rounded-lg font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              Enviar a comercial
+            </button>
+          )}
           <button onClick={exportCsv} className="px-2.5 py-1.5 border border-slate-200 rounded-lg font-semibold text-slate-700 hover:bg-slate-50">
             Exportar CSV ({filtered.length})
           </button>
