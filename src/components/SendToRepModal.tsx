@@ -22,10 +22,11 @@ interface SendToRepModalProps {
   onClose: () => void;
 }
 
-type Period = 'upcoming' | 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'custom';
+type Period = 'all' | 'upcoming' | 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'custom';
 
 const PERIODS: { id: Period; label: string }[] = [
-  { id: 'upcoming', label: 'Próximas' },
+  { id: 'all', label: 'Todas' },
+  { id: 'upcoming', label: 'Desde hoy' },
   { id: 'today', label: 'Hoy' },
   { id: 'tomorrow', label: 'Mañana' },
   { id: 'week', label: 'Esta semana' },
@@ -61,6 +62,8 @@ const slug = (s: string) =>
 function rangeFor(p: Period, from: string, to: string): [string, string] {
   const now = new Date();
   switch (p) {
+    case 'all':
+      return ['0000-01-01', '9999-12-31'];
     case 'upcoming':
       return [toYmd(now), '9999-12-31'];
     case 'today':
@@ -125,7 +128,7 @@ function downloadFile(file: File) {
 
 export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clients, visits, initialRepId, onClose }) => {
   const [repId, setRepId] = useState(initialRepId || salesReps[0]?.id || '');
-  const [period, setPeriod] = useState<Period>('upcoming');
+  const [period, setPeriod] = useState<Period>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [onlyPending, setOnlyPending] = useState(true);
@@ -150,6 +153,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     ).length;
   };
   const totalRepVisits = visits.filter((v) => v.repId === repId).length;
+  const lastRepDate = visits.filter((v) => v.repId === repId).reduce((m, v) => (v.scheduledDate > m ? v.scheduledDate : m), '');
 
   const repVisits = useMemo(
     () =>
@@ -164,18 +168,20 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
   const phoneOk = waPhone(rep?.phone).length >= 11;
   const firstName = (rep?.name || '').split(/[\s,]+/).filter(Boolean)[0] || '';
   const rangeLabel =
-    period === 'upcoming' ? 'próximas' : from === to ? `del ${fmtDate(from)}` : `del ${fmtDate(from)} al ${fmtDate(to)}`;
-  const excelName = `Visitas_${slug(rep?.name || 'comercial')}_${period === 'upcoming' ? 'proximas_' + from : from + (from !== to ? '_a_' + to : '')}.xlsx`;
+    period === 'all' ? 'pendientes' : period === 'upcoming' ? 'próximas' : from === to ? `del ${fmtDate(from)}` : `del ${fmtDate(from)} al ${fmtDate(to)}`;
+  const excelName = `Visitas_${slug(rep?.name || 'comercial')}_${period === 'all' ? (onlyPending ? 'pendientes_' : 'todas_') + toYmd(new Date()) : period === 'upcoming' ? 'proximas_' + from : from + (from !== to ? '_a_' + to : '')}.xlsx`;
 
   // ---------- Mensaje de texto ----------
+  const todayYmd = toYmd(new Date());
+  const isOverdue = (v: Visit) => v.scheduledDate < todayYmd && (v.status === 'scheduled' || v.status === 'in_progress');
   const MAX_LINES = 40;
   const message = useMemo(() => {
     const lines: string[] = [];
-    lines.push(`Hola ${firstName}, te envío tus ${period === 'upcoming' ? 'próximas visitas' : 'visitas ' + rangeLabel} (${repVisits.length}):`);
+    lines.push(`Hola ${firstName}, te envío tus ${period === 'all' ? (onlyPending ? 'visitas pendientes' : 'visitas') : period === 'upcoming' ? 'próximas visitas' : 'visitas ' + rangeLabel} (${repVisits.length}):`);
     lines.push('');
     repVisits.slice(0, MAX_LINES).forEach((v, i) => {
       const c = clientById.get(v.clientId);
-      lines.push(`${i + 1}. ${fmtShort(v.scheduledDate)} ${v.scheduledTime} — ${c?.name || 'Cliente'}${c?.city ? ` (${c.city})` : ''}`);
+      lines.push(`${i + 1}. ${fmtShort(v.scheduledDate)} ${v.scheduledTime} — ${c?.name || 'Cliente'}${c?.city ? ` (${c.city})` : ''}${isOverdue(v) ? ' ⚠️ ATRASADA' : ''}`);
       if (v.objective) lines.push(`   Objetivo: ${v.objective}`);
       const contact = [c?.contactName, c?.phone].filter(Boolean).join(' · ');
       if (contact) lines.push(`   Contacto: ${contact}`);
@@ -195,7 +201,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     lines.push('');
     lines.push('— GeoVentas');
     return lines.join('\n');
-  }, [repVisits, clientById, firstName, rangeLabel, note, includeVisitsExcel, extraFiles, excelName]);
+  }, [period, onlyPending, todayYmd, repVisits, clientById, firstName, rangeLabel, note, includeVisitsExcel, extraFiles, excelName]);
 
   // ---------- Excel ----------
   const buildExcel = (): File => {
@@ -213,7 +219,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
         Dirección: c?.address || '',
         Ciudad: c?.city || '',
         Objetivo: v.objective || '',
-        Estado: STATUS_LABEL[v.status] || v.status,
+        Estado: isOverdue(v) ? 'Atrasada' : STATUS_LABEL[v.status] || v.status,
         Notas: v.notes || '',
         'Google Maps': mapsLink(c),
       };
@@ -234,7 +240,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     const resumen = XLSX.utils.aoa_to_sheet([
       ['Comercial', rep?.name || ''],
       ['Territorio', rep?.territory || ''],
-      ['Periodo', period === 'upcoming' ? `Desde ${fmtDate(from)}` : from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`],
+      ['Periodo', period === 'all' ? 'Todas las fechas' : period === 'upcoming' ? `Desde ${fmtDate(from)}` : from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`],
       ['Visitas', repVisits.length],
       ['Filtro', onlyPending ? 'Solo pendientes / en curso' : 'Todas'],
       ['Generado', new Date().toLocaleString('es-ES')],
@@ -390,7 +396,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
                 <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
                   {totalRepVisits === 0
                     ? `${rep?.name || 'Este comercial'} no tiene ninguna visita asignada. Créala desde "+ Nueva Visita" y vuelve aquí.`
-                    : 'No hay visitas en este periodo. Prueba otro periodo o desmarca "Solo pendientes".'}
+                    : `No hay visitas en este periodo. Tiene ${totalRepVisits} visita(s); la última el ${fmtDate(lastRepDate)}. Pulsa "Todas".`}
                 </div>
               )}
               <label className="flex items-center gap-2 mt-2 text-xs text-slate-600 cursor-pointer">
