@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Client, SalesRep, Visit } from '../types';
 import { sound } from '../utils/audioFeedback';
+import { SUPABASE_URL, SUPABASE_KEY } from '../lib/supabase';
 
 /**
  * Enviar visitas + Excel a un comercial/representante.
@@ -137,6 +138,7 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
   const [note, setNote] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(false);
 
   const rep = salesReps.find((r) => r.id === repId);
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
@@ -320,6 +322,54 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     if (w === null) setFeedback({ type: 'warn', text: 'El navegador bloqueó la ventana emergente. Permite ventanas emergentes para geo-ventas.vercel.app.' });
   };
 
+  /** Envío automático: Edge Function `enviar-visitas` (Gmail SMTP) con los Excel adjuntos. */
+  const sendEmailAuto = async () => {
+    if (!rep?.email) {
+      setFeedback({ type: 'warn', text: 'Este comercial no tiene email. Añádelo en Comerciales → Editar.' });
+      return;
+    }
+    sound.playClick();
+    setSending(true);
+    setFeedback(null);
+    try {
+      const toB64 = async (f: File) => {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return btoa(bin);
+      };
+      const files = filesToSend();
+      const attachments = await Promise.all(
+        files.map(async (f) => ({ filename: f.name, contentType: f.type || undefined, contentBase64: await toB64(f) }))
+      );
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/enviar-visitas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY },
+        body: JSON.stringify({ to: rep.email, subject: emailSubject, text: message, attachments }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        const missing = data.code === 'missing_secrets';
+        setFeedback({
+          type: 'warn',
+          text: missing
+            ? 'El envío automático aún no está configurado: faltan GMAIL_USER y GMAIL_APP_PASSWORD en Supabase.'
+            : data.error || `Error ${res.status} al enviar el correo.`,
+        });
+        return;
+      }
+      sound.playSuccess();
+      setFeedback({
+        type: 'ok',
+        text: `✔ Correo enviado a ${rep.email}${files.length ? ` con ${files.length} adjunto(s)` : ''}.`,
+      });
+    } catch (e: any) {
+      setFeedback({ type: 'warn', text: 'No se pudo conectar con el servidor de envío: ' + (e?.message || e) });
+    } finally {
+      setSending(false);
+    }
+  };
+
   /** Alternativa: programa de correo del ordenador (Outlook, Mail, Thunderbird…). */
   const sendEmailApp = () => {
     sound.playClick();
@@ -500,8 +550,15 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
             {Icon.download} Descargar Excel
           </button>
           <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={sendEmailAuto}
+              disabled={sending}
+              className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5"
+            >
+              {Icon.mail} {sending ? 'Enviando…' : 'Enviar email'}
+            </button>
             <button onClick={sendEmail} className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5">
-              {Icon.mail} Email (Gmail)
+              Abrir en Gmail
             </button>
             <button onClick={sendEmailApp} title="Abrir con Outlook / programa de correo del ordenador" className="px-2 py-2 rounded-lg text-[11px] font-semibold text-slate-500 hover:bg-slate-50">
               Outlook / otro
