@@ -99,7 +99,7 @@ const waPhone = (phone?: string) => {
 const mapsLink = (c?: Client) => {
   if (!c) return '';
   if (c.coords && Number.isFinite(c.coords.lat) && Number.isFinite(c.coords.lng) && (c.coords.lat || c.coords.lng)) {
-    return `https://maps.google.com/?q=${c.coords.lat},${c.coords.lng}`;
+    return `https://maps.google.com/?q=${Number(c.coords.lat).toFixed(6)},${Number(c.coords.lng).toFixed(6)}`;
   }
   const q = [c.address, c.city].filter(Boolean).join(', ');
   return q ? `https://maps.google.com/?q=${encodeURIComponent(q)}` : '';
@@ -299,12 +299,33 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
     });
   };
 
+  const emailSubject = `Tus visitas ${rangeLabel} — GeoVentas`;
+
+  /** Abre Gmail web con destinatario, asunto y cuerpo ya rellenos (no depende de tener Outlook/Thunderbird). */
   const sendEmail = () => {
     sound.playClick();
     filesToSend().forEach(downloadFile);
-    const subject = `Tus visitas ${rangeLabel} — GeoVentas`;
-    window.location.href = `mailto:${encodeURIComponent(rep?.email || '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-    setFeedback({ type: 'ok', text: 'Correo preparado. Adjunta el Excel descargado antes de enviarlo.' });
+    const url =
+      'https://mail.google.com/mail/?view=cm&fs=1' +
+      `&to=${encodeURIComponent(rep?.email || '')}` +
+      `&su=${encodeURIComponent(emailSubject)}` +
+      `&body=${encodeURIComponent(message)}`;
+    const w = window.open(url, '_blank', 'noopener');
+    setFeedback({
+      type: 'ok',
+      text: rep?.email
+        ? `Gmail abierto en otra pestaña con el correo para ${rep.email}. Adjunta el Excel descargado (clip 📎) y pulsa Enviar.`
+        : 'Gmail abierto. El comercial no tiene email: escribe el destinatario y adjunta el Excel descargado.',
+    });
+    if (w === null) setFeedback({ type: 'warn', text: 'El navegador bloqueó la ventana emergente. Permite ventanas emergentes para geo-ventas.vercel.app.' });
+  };
+
+  /** Alternativa: programa de correo del ordenador (Outlook, Mail, Thunderbird…). */
+  const sendEmailApp = () => {
+    sound.playClick();
+    filesToSend().forEach(downloadFile);
+    window.location.href = `mailto:${encodeURIComponent(rep?.email || '')}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(message)}`;
+    setFeedback({ type: 'warn', text: 'Si no se abre nada es que no hay un programa de correo configurado: usa el botón Email (Gmail).' });
   };
 
   const downloadOnly = () => {
@@ -480,7 +501,10 @@ export const SendToRepModal: React.FC<SendToRepModalProps> = ({ salesReps, clien
           </button>
           <div className="flex flex-col sm:flex-row gap-2">
             <button onClick={sendEmail} className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5">
-              {Icon.mail} Email
+              {Icon.mail} Email (Gmail)
+            </button>
+            <button onClick={sendEmailApp} title="Abrir con Outlook / programa de correo del ordenador" className="px-2 py-2 rounded-lg text-[11px] font-semibold text-slate-500 hover:bg-slate-50">
+              Outlook / otro
             </button>
             <button onClick={sendWhatsApp} className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5">
               {Icon.wa} WhatsApp
